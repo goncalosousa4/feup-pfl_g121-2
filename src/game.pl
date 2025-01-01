@@ -1,116 +1,136 @@
-% Display the current game state with two separate boards
-display_game(game(Board, CurrentPlayer, (P1X, P1Y), (P2X, P2Y))) :-
-    write('Current Board (Stone Heights):'), nl,
+% Display the game state
+display_game(game_state(Board, CurrentPlayer, _Players, Pawns, PrevMove)) :-
+    nl, write('Current Player: '), write(CurrentPlayer), nl,
     display_board(Board),
-    nl,
-    write('Current Board (Player Positions):'), nl,
-    display_player_positions(P1X, P1Y, P2X, P2Y),
-    format('Next turn: ~w~n', [CurrentPlayer]).
+    nl, write('Pawns: '), write(Pawns), nl,
+    write('Previous Move: '), write(PrevMove), nl.
 
-% Display the board with the stone heights
-display_board([]).
-display_board([Row|Rest]) :-
-    write(Row), nl,
-    display_board(Rest).
+display_board(Board) :-
+    write('Board: '), nl,
+    display_rows(Board, 1).
 
-% Display the positions of the players on the board
-display_player_positions(P1X, P1Y, P2X, P2Y) :-
-    format('P1(~w,~w)  P2(~w,~w)~n', [P1X, P1Y, P2X, P2Y]).
+display_rows([], _).
+display_rows([Row | Rest], RowNumber) :-
+    write(RowNumber), write(' | '),
+    display_row(Row), nl,
+    NextRow is RowNumber + 1,
+    display_rows(Rest, NextRow).
 
-% Switch between players
-next_player(player1, player2).
-next_player(player2, player1).
+display_row([]).
+display_row([Stack | Rest]) :-
+    display_stack(Stack),
+    write('  '), % Space between stacks
+    display_row(Rest).
 
-% Move a pawn and update the game state
-move(game(Board, CurrentPlayer, (X, Y), (P2X, P2Y)), (NewX, NewY), game(NewBoard, NextPlayer, (NewX, NewY), (P2X, P2Y))) :-
-    valid_move(Board, X, Y, NewX, NewY),
-    replace_in_list(Board, Y, X, empty, TempBoard),
-    replace_in_list(TempBoard, NewY, NewX, CurrentPlayer, NewBoard),
-    next_player(CurrentPlayer, NextPlayer).
+display_stack([]) :- write('.').  % Empty cell
+display_stack([pawn(Player, Number) | _]) :-
+    write('P'), write(Player), write('_'), write(Number).  % Show the pawn details
 
-% Valid move for a pawn
-valid_move(Board, X, Y, NewX, NewY) :-
-    adjacent(X, Y, NewX, NewY),
-    within_bounds(NewX, NewY),
-    valid_stack_move(Board, X, Y, NewX, NewY).
 
-% Check if the target position is adjacent
-adjacent(X, Y, NewX, NewY) :-
-    (NewX is X + 1; NewX is X - 1; NewX = X),
-    (NewY is Y + 1; NewY is Y - 1; NewY = Y).
+% Game initialization
+play :-
+    initial_state([player1, player2, 5], GameState),
+    game_cycle(GameState).
 
-% Check if the position is within bounds
-within_bounds(X, Y) :-
-    X >= 1, X =< 5,
-    Y >= 1, Y =< 5.
+initial_state([Player1, Player2, Size], game_state(Board, Player1, [Player1, Player2], Pawns, no_prev_move)) :-
+    create_initial_board(Size, Board),
+    initialize_pawns(Player1, Player2, Pawns, Board).
 
-% Validate the stack move by checking height difference
-valid_stack_move(Board, X, Y, NewX, NewY) :-
-    get_element(Board, Y, X, CurrentHeight),
-    get_element(Board, NewY, NewX, NewHeight),
-    (NewHeight =:= CurrentHeight; NewHeight =:= CurrentHeight + 1; NewHeight =:= CurrentHeight - 1).
+create_initial_board(Size, Board) :-
+    length(Board, Size),
+    maplist(create_row(Size), Board).
 
-% Get element from board (manually accessing the board data)
-get_element(Board, Row, Col, Value) :-
-    nth_row(Board, Row, R),
-    nth_element(R, Col, Value).
+create_row(Size, Row) :-
+    length(Row, Size),
+    maplist(=([]), Row).
 
-% Get a specific row from the board
-nth_row([Row|_], 1, Row).
-nth_row([_|Rest], N, Row) :-
-    N > 1,
-    N1 is N - 1,
-    nth_row(Rest, N1, Row).
+initialize_pawns(Player1, Player2, 
+                 [pawns(Player1, [[1, 5], [5, 5]]), 
+                  pawns(Player2, [[1, 1], [5, 1]])], 
+                 Board) :-
+    place_pawn(Board, 1, 5, pawn(Player1, 1), Board1),
+    place_pawn(Board1, 5, 5, pawn(Player1, 2), Board2),
+    place_pawn(Board2, 1, 1, pawn(Player2, 1), Board3),
+    place_pawn(Board3, 5, 1, pawn(Player2, 2), _).
 
-% Get an element from the row
-nth_element([Elem|_], 1, Elem).
-nth_element([_|Rest], N, Elem) :-
-    N > 1,
-    N1 is N - 1,
-    nth_element(Rest, N1, Elem).
+place_pawn(Board, Row, Col, Pawn, NewBoard) :-
+    nth1(Row, Board, OldRow, RestRows),
+    nth1(Col, OldRow, OldStack, RestCells),
+    append([Pawn], OldStack, NewStack),
+    nth1(Col, NewRow, NewStack, RestCells),
+    nth1(Row, NewBoard, NewRow, RestRows).
 
-% Replace an element in the list
-replace_in_list([Row|Rest], 1, X, Elem, [NewRow|Rest]) :-
-    replace_in_row(Row, X, Elem, NewRow).
-replace_in_list([Row|Rest], Pos, X, Elem, [Row|NewRest]) :-
-    Pos > 1,
-    NewPos is Pos - 1,
-    replace_in_list(Rest, NewPos, X, Elem, NewRest).
-
-% Replace an element in a row
-replace_in_row([_|T], 1, Elem, [Elem|T]).
-replace_in_row([H|T], Pos, Elem, [H|NewT]) :-
-    Pos > 1,
-    NewPos is Pos - 1,
-    replace_in_row(T, NewPos, Elem, NewT).
-
-% Pickup and place a stone
-pickup_and_place_stone(Board, (X, Y), NewBoard) :-
-    % Find the smallest unoccupied stack
-    find_smallest_stack(Board, SmallestX, SmallestY),
-    replace_in_list(Board, SmallestY, SmallestX, empty, TempBoard),
-    NewHeight is 1, % New stone height for the placed stone
-    replace_in_list(TempBoard, Y, X, NewHeight, NewBoard).
-
-find_smallest_stack(Board, X, Y) :-
-    % Find the smallest stack on the board (excluding current position)
-    findall((X1, Y1, Height), (nth_row(Board, Y1, Row), nth_element(Row, X1, Height), (X1 \= 1 ; Y1 \= 1)), Heights),
-    min_member(Height, Heights).
-
-% Check if the game is over
-game_over(game(Board, _CurrentPlayer, _Pawn1Position, _Pawn2Position)) :-
-    \+ valid_moves(game(Board, _CurrentPlayer, _Pawn1Position, _Pawn2Position), _Moves).
-
-% Core game loop
-game_loop(GameState) :-
+% Game cycle
+game_cycle(GameState) :-
     display_game(GameState),
-    (   game_over(GameState, Winner) 
-    ->  (Winner = draw -> write('Game over! It\'s a draw.'), nl 
-                        ; format('Game over! Winner: ~w~n', [Winner]))
-    ;   GameState = game(_, CurrentPlayer, PawnPosition, _),
-        format('~w\'s turn. Make your move (format: X,Y): ', [CurrentPlayer]),
-        read((X, Y)),
-        (   move(GameState, (X, Y), NewGameState)
-        ->  game_loop(NewGameState)
-        ;   write('Invalid move, try again.'), nl, 
-            game_loop(GameState))).
+    (   check_winner(GameState) ->
+        nl, write('Game Over!'), nl
+    ;   make_move(GameState, NewGameState),
+        game_cycle(NewGameState)
+    ).
+
+% Check winner (stub)
+check_winner(_) :- fail.
+
+% Make a move
+make_move(game_state(Board, CurrentPlayer, Players, Pawns, PrevMove), NewGameState) :-
+    write('Choose your pawn index (1 or 2): '),
+    read(PawnIndex),
+    write('Enter your move (NewRow, NewCol): '),
+    read((NewRow, NewCol)),
+    (   move(game_state(Board, CurrentPlayer, Players, Pawns, PrevMove), 
+             (PawnIndex, NewRow, NewCol), NewGameState) ->
+        true
+    ;   write('Invalid move, try again.'), nl,
+        make_move(game_state(Board, CurrentPlayer, Players, Pawns, PrevMove), NewGameState)
+    ).
+
+move(game_state(Board, CurrentPlayer, Players, Pawns, _PrevMove), 
+     (PawnIndex, NewRow, NewCol), 
+     game_state(NewBoard, NextPlayer, Players, NewPawns, (NewRow, NewCol))) :-
+    select_pawn(CurrentPlayer, Pawns, PawnIndex, [CurrRow, CurrCol]), % Get current position
+    validate_move(Board, [CurrRow, CurrCol], [NewRow, NewCol]),       % Validate the move
+    update_board(Board, CurrRow, CurrCol, [], TempBoard),             % Remove pawn from old position
+    update_board(TempBoard, NewRow, NewCol, [pawn(CurrentPlayer, PawnIndex)], NewBoard), % Place at new position
+    update_pawns(Pawns, CurrentPlayer, PawnIndex, [NewRow, NewCol], NewPawns), % Update pawns list
+    switch_player(CurrentPlayer, Players, NextPlayer).               % Switch turn to the next player
+
+
+% Select the N-th pawn for the current player
+select_pawn(Player, [pawns(Player, PawnList) | _], Index, Pos) :-
+    (nth1(Index, PawnList, Pos) -> true ; fail).
+select_pawn(Player, [_ | Rest], Index, Pos) :-
+    select_pawn(Player, Rest, Index, Pos).
+
+validate_move(Board, [CurrRow, CurrCol], [NewRow, NewCol]) :-
+    length(Board, Size),
+    NewRow > 0, NewRow =< Size,
+    NewCol > 0, NewCol =< Size,
+    abs(NewRow - CurrRow) =< 1, abs(NewCol - CurrCol) =< 1.
+
+% Update the board with the move
+update_board(Board, Row, Col, Value, NewBoard) :-
+    nth1(Row, Board, OldRow, RestRows),    % Extract the target row
+    nth1(Col, OldRow, _, RestCells),       % Extract the target column
+    nth1(Col, NewRow, Value, RestCells),  % Replace the column with the new value
+    nth1(Row, NewBoard, NewRow, RestRows). % Replace the row in the board
+
+
+update_pawns([pawns(Player, PawnList) | Rest], Player, Index, NewPos, 
+             [pawns(Player, NewPawnList) | Rest]) :-
+    nth1(Index, PawnList, _, RestPawns),  % Remove the old position
+    nth1(Index, NewPawnList, NewPos, RestPawns).  % Insert the new position
+
+update_pawns([Other | Rest], Player, Index, NewPos, [Other | NewRest]) :-
+    update_pawns(Rest, Player, Index, NewPos, NewRest).  % Recurse for other players
+
+% Switch players
+switch_player(CurrentPlayer, [CurrentPlayer, OtherPlayer], OtherPlayer).
+switch_player(CurrentPlayer, [OtherPlayer, CurrentPlayer], OtherPlayer).
+
+% Get the N-th element from a list (1-based indexing)
+nth1(1, [Head | _], Head).
+nth1(N, [_ | Tail], Elem) :-
+    N > 1,
+    N1 is N - 1,
+    nth1(N1, Tail, Elem).
