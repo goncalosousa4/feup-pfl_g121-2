@@ -1,3 +1,5 @@
+:- use_module(library(lists)).
+
 % Display the game state
 display_game(game_state(Board, CurrentPlayer, _Players, Pawns, PrevMove)) :-
     nl, write('Current Player: '), write(CurrentPlayer), nl,
@@ -70,7 +72,7 @@ game_cycle(GameState) :-
     ).
 
 % Check winner (stub)
-check_winner(_) :- fail.
+game_over(_) :- fail.
 
 % Make a move
 make_move(game_state(Board, CurrentPlayer, Players, Pawns, PrevMove), NewGameState) :-
@@ -87,9 +89,9 @@ make_move(game_state(Board, CurrentPlayer, Players, Pawns, PrevMove), NewGameSta
 
 move(game_state(Board, CurrentPlayer, Players, Pawns, _PrevMove), 
      (PawnIndex, NewRow, NewCol), 
-     game_state(NewBoard, NextPlayer, Players, NewPawns, (NewRow, NewCol))) :-
+    game_state(NewBoard, NextPlayer, Players, NewPawns, (NewRow, NewCol))) :-
     select_pawn(CurrentPlayer, Pawns, PawnIndex, [CurrRow, CurrCol]), % Get current position
-    validate_move(Board, [CurrRow, CurrCol], [NewRow, NewCol]),       % Validate the move
+    valid_moves(Board, [CurrRow, CurrCol], [NewRow, NewCol]),       % Validate the move
     update_board(Board, CurrRow, CurrCol, [], TempBoard),             % Remove pawn from old position
     update_board(TempBoard, NewRow, NewCol, [pawn(CurrentPlayer, PawnIndex)], NewBoard), % Place at new position
     update_pawns(Pawns, CurrentPlayer, PawnIndex, [NewRow, NewCol], NewPawns), % Update pawns list
@@ -102,7 +104,7 @@ select_pawn(Player, [pawns(Player, PawnList) | _], Index, Pos) :-
 select_pawn(Player, [_ | Rest], Index, Pos) :-
     select_pawn(Player, Rest, Index, Pos).
 
-validate_move(Board, [CurrRow, CurrCol], [NewRow, NewCol]) :-
+valid_moves(Board, [CurrRow, CurrCol], [NewRow, NewCol]) :-
     length(Board, Size),
     NewRow > 0, NewRow =< Size,
     NewCol > 0, NewCol =< Size,
