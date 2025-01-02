@@ -57,7 +57,7 @@ initialize_pawns(Player1, Player2,
 
 place_pawn(Board, Row, Col, Pawn, NewBoard) :-
     nth1(Row, Board, OldRow, RestRows),
-    nth1(Col, OldRow, OldStack, RestCells),
+    nth1(Col, OldRow, OldStack, RestCells), 
     append([Pawn], OldStack, NewStack),
     nth1(Col, NewRow, NewStack, RestCells),
     nth1(Row, NewBoard, NewRow, RestRows).
@@ -65,7 +65,7 @@ place_pawn(Board, Row, Col, Pawn, NewBoard) :-
 % Game cycle
 game_cycle(GameState) :-
     display_game(GameState),
-    (   check_winner(GameState) ->
+    (   game_over(GameState) ->
         nl, write('Game Over!'), nl
     ;   make_move(GameState, NewGameState),
         game_cycle(NewGameState)
