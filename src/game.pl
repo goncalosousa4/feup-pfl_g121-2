@@ -13,16 +13,22 @@ display_board(Board) :-
 
 display_rows([], _).
 display_rows([Row | Rest], RowNumber) :-
-    write(RowNumber), write(' | '),
-    display_row(Row), nl,
+    write(RowNumber), write(' | '), % Display the row number
+    display_row(Row), nl,           % Display the row contents
     NextRow is RowNumber + 1,
     display_rows(Rest, NextRow).
 
 display_row([]).
-display_row([Stack | Rest]) :-
-    display_stack(Stack),
-    write('  '), % Space between stacks
+display_row([Cell | Rest]) :-
+    display_cell(Cell),
+    write('  '), % Space between cells
     display_row(Rest).
+
+display_cell([]) :- write('.'). % Empty stack displays as '.'
+display_cell('.') :- write('.'). % Already initialized as '.'
+display_cell([pawn(Player, Number) | _]) :- 
+    sub_atom(Player, 6, 1, _, PlayerLetter),  % Extract player letter (e.g., A or B)
+    write(PlayerLetter), write(Number).      % Display as "A1" or "B1"
 
 display_stack([]) :- write('.').  % Empty cell
 display_stack([pawn(Player, Number) | _]) :-
@@ -45,7 +51,7 @@ create_initial_board(Size, Board) :-
 
 create_row(Size, Row) :-
     length(Row, Size),
-    maplist(=([]), Row).
+    maplist(=('.'), Row).
 
 initialize_pawns(PlayerA, PlayerB, 
                  [pawns(PlayerA, [[1, 5], [5, 1]]), 
