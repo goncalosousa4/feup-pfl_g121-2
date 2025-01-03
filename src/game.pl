@@ -1,4 +1,4 @@
-:- use_module(library(lists)).
+:- use_module(library(lists)).     % might be necessary
 
 % Display the game state
 display_game(game_state(Board, CurrentPlayer, _Players, Pawns, PrevMove)) :-
@@ -26,17 +26,18 @@ display_row([Stack | Rest]) :-
 
 display_stack([]) :- write('.').  % Empty cell
 display_stack([pawn(Player, Number) | _]) :-
-    write('P'), write(Player), write('_'), write(Number).  % Show the pawn details
+    sub_atom(Player, 6, 1, _, PlayerLetter),  % Extract the last character (A or B) from "playerX"
+    write(PlayerLetter), write(Number).  % Display as "A1" or "B1"
 
 
 % Game initialization
 play :-
-    initial_state([player1, player2, 5], GameState),
+    initial_state([playerA, playerB, 5], GameState),
     game_cycle(GameState).
 
-initial_state([Player1, Player2, Size], game_state(Board, Player1, [Player1, Player2], Pawns, no_prev_move)) :-
+initial_state([PlayerA, PlayerB, Size], game_state(Board, PlayerA, [PlayerA, PlayerB], Pawns, no_prev_move)) :-
     create_initial_board(Size, Board),
-    initialize_pawns(Player1, Player2, Pawns, Board).
+    initialize_pawns(PlayerA, PlayerB, Pawns, Board).
 
 create_initial_board(Size, Board) :-
     length(Board, Size),
@@ -46,14 +47,14 @@ create_row(Size, Row) :-
     length(Row, Size),
     maplist(=([]), Row).
 
-initialize_pawns(Player1, Player2, 
-                 [pawns(Player1, [[1, 5], [5, 5]]), 
-                  pawns(Player2, [[1, 1], [5, 1]])], 
+initialize_pawns(PlayerA, PlayerB, 
+                 [pawns(PlayerA, [[1, 5], [5, 1]]), 
+                  pawns(PlayerB, [[1, 1], [5, 5]])], 
                  Board) :-
-    place_pawn(Board, 1, 5, pawn(Player1, 1), Board1),
-    place_pawn(Board1, 5, 5, pawn(Player1, 2), Board2),
-    place_pawn(Board2, 1, 1, pawn(Player2, 1), Board3),
-    place_pawn(Board3, 5, 1, pawn(Player2, 2), _).
+    place_pawn(Board, 1, 5, pawn(PlayerA, 1), Board1),
+    place_pawn(Board1, 5, 1, pawn(PlayerA, 2), Board2),
+    place_pawn(Board2, 1, 1, pawn(PlayerB, 1), Board3),
+    place_pawn(Board3, 5, 5, pawn(PlayerB, 2), _).
 
 place_pawn(Board, Row, Col, Pawn, NewBoard) :-
     nth1(Row, Board, OldRow, RestRows),
