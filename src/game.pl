@@ -42,8 +42,8 @@ play :-
     game_cycle(GameState).
 
 initial_state([PlayerA, PlayerB, Size], game_state(Board, PlayerA, [PlayerA, PlayerB], Pawns, no_prev_move)) :-
-    create_initial_board(Size, Board),
-    initialize_pawns(PlayerA, PlayerB, Pawns, Board).
+    create_initial_board(Size, EmptyBoard),
+    initialize_pawns(PlayerA, PlayerB, Pawns, EmptyBoard, Board).
 
 create_initial_board(Size, Board) :-
     length(Board, Size),
@@ -56,11 +56,11 @@ create_row(Size, Row) :-
 initialize_pawns(PlayerA, PlayerB, 
                  [pawns(PlayerA, [[1, 5], [5, 1]]), 
                   pawns(PlayerB, [[1, 1], [5, 5]])], 
-                 Board) :-
-    place_pawn(Board, 1, 5, pawn(PlayerA, 1), Board1),
-    place_pawn(Board1, 5, 1, pawn(PlayerA, 2), Board2),
-    place_pawn(Board2, 1, 1, pawn(PlayerB, 1), Board3),
-    place_pawn(Board3, 5, 5, pawn(PlayerB, 2), _).
+                 EmptyBoard, Board) :-
+    place_pawn(EmptyBoard, 1, 5, pawn(PlayerA, 1), TempBoard1),
+    place_pawn(TempBoard1, 5, 1, pawn(PlayerA, 2), TempBoard2),
+    place_pawn(TempBoard2, 1, 1, pawn(PlayerB, 1), TempBoard3),
+    place_pawn(TempBoard3, 5, 5, pawn(PlayerB, 2), Board).
 
 place_pawn(Board, Row, Col, Pawn, NewBoard) :-
     nth1(Row, Board, OldRow, RestRows),
