@@ -54,17 +54,17 @@ create_row(Size, Row) :-
     maplist(=('.'), Row).
 
 initialize_pawns(PlayerA, PlayerB, 
-                 [pawns(PlayerA, [[1, 5], [5, 1]]), 
-                  pawns(PlayerB, [[1, 1], [5, 5]])], 
+                 [pawns(PlayerA, [[1, 1], [5, 5]]), 
+                  pawns(PlayerB, [[1, 5], [5, 1]])], 
                  EmptyBoard, Board) :-
-    place_pawn(EmptyBoard, 1, 5, pawn(PlayerA, 1), TempBoard1),
-    place_pawn(TempBoard1, 5, 1, pawn(PlayerA, 2), TempBoard2),
-    place_pawn(TempBoard2, 1, 1, pawn(PlayerB, 1), TempBoard3),
-    place_pawn(TempBoard3, 5, 5, pawn(PlayerB, 2), Board).
+    place_pawn(EmptyBoard, 1, 1, pawn(PlayerA, 1), TempBoard1),
+    place_pawn(TempBoard1, 5, 5, pawn(PlayerA, 2), TempBoard2),
+    place_pawn(TempBoard2, 1, 5, pawn(PlayerB, 1), TempBoard3),
+    place_pawn(TempBoard3, 5, 1, pawn(PlayerB, 2), Board).
 
 place_pawn(Board, Row, Col, Pawn, NewBoard) :-
     nth1(Row, Board, OldRow, RestRows),
-    nth1(Col, OldRow, OldStack, RestCells), 
+    nth1(Col, OldRow, OldStack, RestCells),
     append([Pawn], OldStack, NewStack),
     nth1(Col, NewRow, NewStack, RestCells),
     nth1(Row, NewBoard, NewRow, RestRows).
