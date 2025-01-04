@@ -24,13 +24,13 @@ display_row([Cell | Rest]) :-
     write('     '), % Space between cells
     display_row(Rest).
 
-display_cell([]) :- write('o'). % Empty stack displays as '.'
-display_cell('o') :- write('o'). % Already initialized as '.'
+display_cell([]) :- write(' '). % Empty stack displays as ' '
+display_cell('o') :- write('o'). % Already initialized as 'o'
 display_cell([pawn(Player, Number) | _]) :- 
     sub_atom(Player, 6, 1, _, PlayerLetter),  % Extract player letter (e.g., A or B)
     write(PlayerLetter), write(Number).      % Display as "A1" or "B1"
 
-display_stack([]) :- write('o').  % Empty cell
+display_stack([]) :- write('.').  % Empty cell
 display_stack([pawn(Player, Number) | _]) :-
     sub_atom(Player, 6, 1, _, PlayerLetter),  % Extract the last character (A or B) from "playerX"
     write(PlayerLetter), write(Number).  % Display as "A1" or "B1"
@@ -98,11 +98,11 @@ move(game_state(Board, CurrentPlayer, Players, Pawns, _PrevMove),
      (PawnIndex, NewRow, NewCol), 
     game_state(NewBoard, NextPlayer, Players, NewPawns, (NewRow, NewCol))) :-
     select_pawn(CurrentPlayer, Pawns, PawnIndex, [CurrRow, CurrCol]), % Get current position
-    valid_moves(Board, [CurrRow, CurrCol], [NewRow, NewCol]),       % Validate the move
-    update_board(Board, CurrRow, CurrCol, [], TempBoard),             % Remove pawn from old position
-    update_board(TempBoard, NewRow, NewCol, [pawn(CurrentPlayer, PawnIndex)], NewBoard), % Place at new position
+    valid_moves(Board, [CurrRow, CurrCol], [NewRow, NewCol]),         % Validate the move
+    update_board(Board, CurrRow, CurrCol, [], TempBoard),             % Remove pawn from old position (preserve stones)
+    update_board(TempBoard, NewRow, NewCol, [pawn(CurrentPlayer, PawnIndex)], NewBoard), % Add pawn to new position
     update_pawns(Pawns, CurrentPlayer, PawnIndex, [NewRow, NewCol], NewPawns), % Update pawns list
-    switch_player(CurrentPlayer, Players, NextPlayer).               % Switch turn to the next player
+    switch_player(CurrentPlayer, Players, NextPlayer).              % Switch turn to the next player
 
 
 % Select the N-th pawn for the current player
@@ -119,11 +119,14 @@ valid_moves(Board, [CurrRow, CurrCol], [NewRow, NewCol]) :-
 
 % Update the board with the move
 update_board(Board, Row, Col, Value, NewBoard) :-
-    nth1(Row, Board, OldRow, RestRows),    % Extract the target row
-    nth1(Col, OldRow, _, RestCells),       % Extract the target column
-    nth1(Col, NewRow, Value, RestCells),  % Replace the column with the new value
-    nth1(Row, NewBoard, NewRow, RestRows). % Replace the row in the board
+    nth1(Row, Board, OldRow, RestRows),                % Extract the target row
+    nth1(Col, OldRow, OldStack, RestCells),            % Extract the target stack
+    update_stack(OldStack, Value, NewStack),           % Update the stack (preserve stones)
+    nth1(Col, NewRow, NewStack, RestCells),            % Update the column
+    nth1(Row, NewBoard, NewRow, RestRows).
 
+update_stack([pawn(_, _) | Rest], [], Rest).            % Remove the pawn (keep stones)
+update_stack(OldStack, [pawn(Player, Number)], [pawn(Player, Number) | OldStack]). % Add pawn
 
 update_pawns([pawns(Player, PawnList) | Rest], Player, Index, NewPos, 
              [pawns(Player, NewPawnList) | Rest]) :-
