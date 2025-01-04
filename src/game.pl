@@ -21,16 +21,16 @@ display_rows([Row | Rest], RowNumber) :-
 display_row([]).
 display_row([Cell | Rest]) :-
     display_cell(Cell),
-    write('  '), % Space between cells
+    write('     '), % Space between cells
     display_row(Rest).
 
-display_cell([]) :- write('.'). % Empty stack displays as '.'
-display_cell('.') :- write('.'). % Already initialized as '.'
+display_cell([]) :- write('o'). % Empty stack displays as '.'
+display_cell('o') :- write('o'). % Already initialized as '.'
 display_cell([pawn(Player, Number) | _]) :- 
     sub_atom(Player, 6, 1, _, PlayerLetter),  % Extract player letter (e.g., A or B)
     write(PlayerLetter), write(Number).      % Display as "A1" or "B1"
 
-display_stack([]) :- write('.').  % Empty cell
+display_stack([]) :- write('o').  % Empty cell
 display_stack([pawn(Player, Number) | _]) :-
     sub_atom(Player, 6, 1, _, PlayerLetter),  % Extract the last character (A or B) from "playerX"
     write(PlayerLetter), write(Number).  % Display as "A1" or "B1"
@@ -51,7 +51,7 @@ create_initial_board(Size, Board) :-
 
 create_row(Size, Row) :-
     length(Row, Size),
-    maplist(=('.'), Row).
+    maplist(=('o'), Row).
 
 initialize_pawns(PlayerA, PlayerB, 
                  [pawns(PlayerA, [[1, 1], [5, 5]]), 
