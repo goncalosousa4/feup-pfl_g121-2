@@ -63,11 +63,11 @@ initialize_pawns(PlayerA, PlayerB,
     place_pawn(TempBoard3, 5, 1, pawn(PlayerB, 2), Board).
 
 place_pawn(Board, Row, Col, Pawn, NewBoard) :-
-    nth1(Row, Board, OldRow, RestRows),
-    nth1(Col, OldRow, OldStack, RestCells),
-    append([Pawn], OldStack, NewStack),
-    nth1(Col, NewRow, NewStack, RestCells),
-    nth1(Row, NewBoard, NewRow, RestRows).
+    nth1(Row, Board, OldRow, RestRows),             % Extract the target row
+    nth1(Col, OldRow, OldStack, RestCells),         % Extract the target stack
+    append([Pawn], OldStack, NewStack),            % Add the pawn to the top of the stack
+    nth1(Col, NewRow, NewStack, RestCells),        % Update the column
+    nth1(Row, NewBoard, NewRow, RestRows).         % Update the row
 
 % Game cycle
 game_cycle(GameState) :-
@@ -96,13 +96,13 @@ make_move(game_state(Board, CurrentPlayer, Players, Pawns, PrevMove), NewGameSta
 
 move(game_state(Board, CurrentPlayer, Players, Pawns, _PrevMove), 
      (PawnIndex, NewRow, NewCol), 
-    game_state(NewBoard, NextPlayer, Players, NewPawns, (NewRow, NewCol))) :-
+     game_state(NewBoard, NextPlayer, Players, NewPawns, (NewRow, NewCol))) :-
     select_pawn(CurrentPlayer, Pawns, PawnIndex, [CurrRow, CurrCol]), % Get current position
     valid_moves(Board, [CurrRow, CurrCol], [NewRow, NewCol]),         % Validate the move
     update_board(Board, CurrRow, CurrCol, [], TempBoard),             % Remove pawn from old position (preserve stones)
     update_board(TempBoard, NewRow, NewCol, [pawn(CurrentPlayer, PawnIndex)], NewBoard), % Add pawn to new position
     update_pawns(Pawns, CurrentPlayer, PawnIndex, [NewRow, NewCol], NewPawns), % Update pawns list
-    switch_player(CurrentPlayer, Players, NextPlayer).              % Switch turn to the next player
+    switch_player(CurrentPlayer, Players, NextPlayer).            % Switch turn to the next player
 
 
 % Select the N-th pawn for the current player
@@ -123,10 +123,8 @@ update_board(Board, Row, Col, Value, NewBoard) :-
     nth1(Col, OldRow, OldStack, RestCells),            % Extract the target stack
     update_stack(OldStack, Value, NewStack),           % Update the stack (preserve stones)
     nth1(Col, NewRow, NewStack, RestCells),            % Update the column
-    nth1(Row, NewBoard, NewRow, RestRows).
+    nth1(Row, NewBoard, NewRow, RestRows).    
 
-update_stack([pawn(_, _) | Rest], [], Rest).            % Remove the pawn (keep stones)
-update_stack(OldStack, [pawn(Player, Number)], [pawn(Player, Number) | OldStack]). % Add pawn
 
 update_pawns([pawns(Player, PawnList) | Rest], Player, Index, NewPos, 
              [pawns(Player, NewPawnList) | Rest]) :-
