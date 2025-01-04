@@ -118,17 +118,34 @@ move(game_state(Board, CurrentPlayer, Players, Pawns, _PrevMove),
     % 1. Move pawn
     select_pawn(CurrentPlayer, Pawns, PawnIndex, [CurrRow, CurrCol]),
     valid_moves(Board, [CurrRow, CurrCol], [NewRow, NewCol]),
-    update_board(Board, CurrRow, CurrCol, [], TempBoard1),
-    update_board(TempBoard1, NewRow, NewCol, [pawn(CurrentPlayer, PawnIndex)], TempBoard2),
+    
+    % Get the stone from current position before moving pawn
+    get_stack(Board, CurrRow, CurrCol, CurrStack),
+    % Remove pawn but keep stone
+    update_board(Board, CurrRow, CurrCol, ['o'], TempBoard1),
+    
+    % Add pawn to new position while preserving stones
+    get_stack(TempBoard1, NewRow, NewCol, TargetStack),
+    (TargetStack = 'o' -> 
+        update_board(TempBoard1, NewRow, NewCol, [pawn(CurrentPlayer, PawnIndex), 'o'], TempBoard2)
+    ; is_list(TargetStack) ->
+        append([pawn(CurrentPlayer, PawnIndex)], TargetStack, NewStack),
+        update_board(TempBoard1, NewRow, NewCol, NewStack, TempBoard2)
+    ; update_board(TempBoard1, NewRow, NewCol, [pawn(CurrentPlayer, PawnIndex)], TempBoard2)),
     
     % 2. Pick up stone
     valid_stone_pickup(TempBoard2, PickupRow, PickupCol, [NewRow, NewCol]),
-    get_stack(TempBoard2, PickupRow, PickupCol, Stack),
     update_board(TempBoard2, PickupRow, PickupCol, [], TempBoard3),
     
     % 3. Place stone
     valid_stone_placement(TempBoard3, PlaceRow, PlaceCol, [NewRow, NewCol], [PickupRow, PickupCol]),
-    update_board(TempBoard3, PlaceRow, PlaceCol, ['o'], FinalBoard),
+    get_stack(TempBoard3, PlaceRow, PlaceCol, PlaceStack),
+    (PlaceStack = 'o' ->
+        update_board(TempBoard3, PlaceRow, PlaceCol, ['o', 'o'], FinalBoard)
+    ; PlaceStack = [] ->
+        update_board(TempBoard3, PlaceRow, PlaceCol, ['o'], FinalBoard)
+    ; append(['o'], PlaceStack, NewPlaceStack),
+        update_board(TempBoard3, PlaceRow, PlaceCol, NewPlaceStack, FinalBoard)),
     
     % Update pawns and switch player
     update_pawns(Pawns, CurrentPlayer, PawnIndex, [NewRow, NewCol], NewPawns),
@@ -196,7 +213,17 @@ valid_moves(Board, [CurrRow, CurrCol], [NewRow, NewCol]) :-
     length(Board, Size),
     NewRow > 0, NewRow =< Size,
     NewCol > 0, NewCol =< Size,
-    abs(NewRow - CurrRow) =< 1, abs(NewCol - CurrCol) =< 1.
+    % Allow movement to any adjacent cell (including diagonals)
+    between(-1, 1, RowDiff),
+    between(-1, 1, ColDiff),
+    NewRow is CurrRow + RowDiff,
+    NewCol is CurrCol + ColDiff,
+    % Get heights of current and target positions
+    get_stack_height(Board, CurrRow, CurrCol, CurrHeight),
+    get_stack_height(Board, NewRow, NewCol, NewHeight),
+    % Check height difference is valid (-1, 0, or 1)
+    HeightDiff is NewHeight - CurrHeight,
+    between(-1, 1, HeightDiff).
 
 % Update board with move
 update_board(Board, Row, Col, Value, NewBoard) :-
@@ -207,17 +234,24 @@ update_board(Board, Row, Col, Value, NewBoard) :-
     nth1(Row, NewBoard, NewRow, RestRows).
 
 % Update stack handling
-update_stack(OldStack, [], []).  % Clear the stack
-update_stack(OldStack, [pawn(Player, Number)], [pawn(Player, Number)|Stones]) :-
-    % When adding a pawn, keep any stones below it
-    (OldStack = [] -> Stones = [] ;
-     (OldStack = 'o' -> Stones = ['o'] ;
-      (is_list(OldStack) -> filter_stones(OldStack, Stones) ; Stones = []))).
-update_stack(_, ['o'], ['o']).  % Single stone
-update_stack(OldStack, ['o'], ['o'|Stones]) :-  % Add stone to existing stack
-    (OldStack = [] -> Stones = [] ;
-     (OldStack = 'o' -> Stones = ['o'] ;
-      (is_list(OldStack) -> filter_stones(OldStack, Stones) ; Stones = []))).
+update_stack(OldStack, [], []) :- !.  % Clear the stack
+update_stack(OldStack, [pawn(Player, Number)], [pawn(Player, Number)|Stones]) :- !,
+    % When adding a pawn, preserve stones below it
+    (is_list(OldStack) -> 
+        filter_stones(OldStack, Stones)
+    ; OldStack = 'o' -> 
+        Stones = ['o']
+    ; Stones = []).
+
+update_stack(_, ['o'], ['o']) :- !.  % Single stone
+update_stack(OldStack, ['o'], NewStack) :-  % Add stone to existing stack
+    (is_list(OldStack) ->
+        (member('o', OldStack) ->
+            append(['o'], OldStack, NewStack)
+        ;   ['o'|OldStack] = NewStack)
+    ; OldStack = 'o' ->
+        NewStack = ['o', 'o']
+    ; NewStack = ['o']).
 
 % Helper to filter stones
 filter_stones([], []).
