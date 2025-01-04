@@ -19,7 +19,15 @@ display_cell(Stack) :-
     is_list(Stack),
     count_stones(Stack, N),
     N > 0,
-    write(N), write('o').
+    write_stones(N).  % Write repeated 'o' for stones
+
+% Helper to write 'o' N times
+write_stones(0).  % No stones to write
+write_stones(N) :- 
+    N > 0, 
+    write('o'), 
+    N1 is N - 1, 
+    write_stones(N1).
 
 % Count stones in a stack
 count_stones([], 0).
@@ -149,23 +157,37 @@ move(game_state(Board, CurrentPlayer, Players, Pawns, _PrevMove),
     update_pawns(Pawns, CurrentPlayer, PawnIndex, [NewRow, NewCol], NewPawns),
     switch_player(CurrentPlayer, Players, NextPlayer).
 
-% Valid moves predicate
 valid_moves(Board, [CurrRow, CurrCol], [NewRow, NewCol]) :-
     length(Board, Size),
-    NewRow > 0, NewRow =< Size,
-    NewCol > 0, NewCol =< Size,
-    % Allow movement to any adjacent cell (including diagonals)
+    
+    % Check bounds
+    (NewRow > 0, NewRow =< Size, NewCol > 0, NewCol =< Size),
+    
     RowDiff is NewRow - CurrRow,
     ColDiff is NewCol - CurrCol,
+    
+    % Ensure we are moving, not staying in the same position
+    \+ (RowDiff = 0, ColDiff = 0),
+    
+    % Allow diagonal or adjacent moves
     abs(RowDiff) =< 1,
     abs(ColDiff) =< 1,
-    % Don't allow staying in the same position
-    \+ (RowDiff = 0, ColDiff = 0),
-    % Get actual stone heights (excluding pawns)
+    
+    % Check stone height difference
     get_stone_only_height(Board, CurrRow, CurrCol, CurrHeight),
     get_stone_only_height(Board, NewRow, NewCol, NewHeight),
     HeightDiff is NewHeight - CurrHeight,
-    between(-1, 1, HeightDiff).
+    
+    % Validate the height difference
+    between(-1, 1, HeightDiff),
+    
+    % Ensure the target position has something (either a pawn or a stone)
+    get_stack(Board, NewRow, NewCol, Stack),
+    Stack \= [ ], % Disallow moving to an empty space
+    (Stack = 'o' ; is_list(Stack)), % Target must have stones or a stack
+    
+    % Ensure the target position does not have another pawn
+    \+ (is_list(Stack), member(pawn(_, _), Stack)).
 
 % Get stack at position
 get_stack(Board, Row, Col, Stack) :-
@@ -188,35 +210,51 @@ count_only_stones(Stack, Height) :-
 % Validate stone pickup
 valid_stone_pickup(Board, Row, Col, [PawnRow, PawnCol]) :-
     get_stack(Board, Row, Col, Stack),
+    
     % Must contain a stone and not be empty
     (Stack = 'o' ; (is_list(Stack), member('o', Stack))),
-    % Cannot be the stack we just moved from
+    
+    % Cannot be the stack where the current pawn is placed
     (Row \= PawnRow ; Col \= PawnCol),
+    
+    % Ensure the position doesnt contain a pawn (we can't take stones from a pawn's position)
+    \+ (is_list(Stack), member(pawn(_, _), Stack)),
+
     % Must be one of the smallest stacks (counting only stones)
     get_stone_only_height(Board, Row, Col, Height),
-    \+ (    between(1, 5, R),
-            between(1, 5, C),
-            (R \= Row ; C \= Col),
-            get_stack(Board, R, C, OtherStack),
-            (OtherStack = 'o' ; (is_list(OtherStack), member('o', OtherStack))),
-            (R \= PawnRow ; C \= PawnCol),
-            get_stone_only_height(Board, R, C, OtherHeight),
-            OtherHeight < Height
-        ).
+    \+ (between(1, 5, R),
+        between(1, 5, C),
+        (R \= Row ; C \= Col),
+        get_stack(Board, R, C, OtherStack),
+        (OtherStack = 'o' ; (is_list(OtherStack), member('o', OtherStack))),
+        (R \= PawnRow ; C \= PawnCol),
+        get_stone_only_height(Board, R, C, OtherHeight),
+        OtherHeight < Height
+    ).
 
-% Validate stone placement
+
 valid_stone_placement(Board, Row, Col, [PawnRow, PawnCol], [PickupRow, PickupCol]) :-
     % Must be a different position than pickup and pawn
     (Row \= PawnRow ; Col \= PawnCol),
     (Row \= PickupRow ; Col \= PickupCol),
+    
     % Position must exist on board
     length(Board, Size),
     Row > 0, Row =< Size,
     Col > 0, Col =< Size,
+    
     % Get current stack at target
     get_stack(Board, Row, Col, Stack),
-    % Allow placement on any valid stack with stones
-    (Stack = 'o' ; (is_list(Stack), member('o', Stack)) ; Stack = []).
+
+    % Ensure target position is not empty
+    Stack \= [ ],  % Disallow placement in empty positions
+    
+    % Allow placement only on stacks with stones or valid stacks
+    (Stack = 'o' ; is_list(Stack)),
+    
+    % Ensure target position does not already contain a pawn
+    \+ (is_list(Stack), member(pawn(_, _), Stack)).
+
 
 % Helper predicates for stone manipulation
 remove_one_stone(Stack, NewStack) :-
@@ -251,5 +289,53 @@ update_pawns([Other | Rest], Player, Index, NewPos, [Other | NewRest]) :-
 switch_player(CurrentPlayer, [CurrentPlayer, OtherPlayer], OtherPlayer).
 switch_player(CurrentPlayer, [OtherPlayer, CurrentPlayer], OtherPlayer).
 
-% Game over check (to be implemented)
-game_over(_) :- fail.
+:- use_module(library(lists)).
+
+% The game is over if the current player has no valid moves left
+game_over(game_state(Board, CurrentPlayer, Players, Pawns, _PrevMove)) :-
+    % Find all pawns of the current player that have no valid moves
+    findall([PawnIndex, CurrRow, CurrCol],
+            (select_pawn(CurrentPlayer, Pawns, PawnIndex, [CurrRow, CurrCol]),
+             \+ has_valid_move(Board, [CurrRow, CurrCol])  % Check if the pawn has no valid moves
+            ),
+            NoMoves),
+    
+    % If there are no valid moves for at least one pawn, the game is over
+    NoMoves \= [].
+
+has_valid_move(Board, [CurrRow, CurrCol]) :-
+    % Generate all possible adjacent cells
+    findall([NewRow, NewCol],
+            (adjacent_cell(CurrRow, CurrCol, NewRow, NewCol),
+             valid_moves(Board, [CurrRow, CurrCol], [NewRow, NewCol])
+            ),
+            ValidMoves2),
+    
+    % Debugging output to see the possible valid moves
+    sort(ValidMoves2, ValidMoves),
+    write('Valid moves from ['), write(CurrRow), write(','), write(CurrCol), write(']: '), write(ValidMoves), nl,
+    
+    % If there are valid moves, return true
+    ValidMoves \= [].
+
+
+adjacent_cell(CurrRow, CurrCol, NewRow, NewCol) :-
+    % Generate all possible row and column changes: -1, 0, +1 for each direction
+    member(RowDiff, [-1, 0, 1]),      % Possible row changes
+    member(ColDiff, [-1, 0, 1]),      % Possible column changes
+
+    % Ensure we are not staying at the same cell
+    (RowDiff \= 0 ; ColDiff \= 0),    % We cant stay in the same position
+
+    % Calculate the new position based on the row and column changes
+    NewRow is CurrRow + RowDiff,
+    NewCol is CurrCol + ColDiff,
+
+    % Ensure NewRow and NewCol are within valid bounds (1 to 5)
+    NewRow > 0, NewRow =< 5,
+    NewCol > 0, NewCol =< 5.
+
+
+
+
+
