@@ -603,8 +603,7 @@ easy_bot_move(GameState, NewGameState) :-
 % Difficult bot move using valid_bot_move
 difficult_bot_move(GameState, NewGameState) :-
     % Generate all valid bot moves (using valid_bot_move to collect valid moves)
-    find_n_moves(5000, GameState, ValidMoves),
-
+    find_n_moves_d(5000, GameState, ValidMoves),
     % Evaluate each valid move
     evaluate_moves(GameState, ValidMoves, EvaluatedMoves),
     % Find the move with the highest value
@@ -638,7 +637,13 @@ execute_move(GameState, Move, NewGameState) :-
     % It can use the existing game mechanics like move or any equivalent.
     move(GameState, Move, NewGameState).
 
-% Attempt to find a single valid move by trying up to N times
+find_n_moves_d(0, _, []) :- !. % If no attempts are left, return an empty list
+find_n_moves_d(N, GameState, [Move | RestMoves]) :-
+    N > 0,
+    valid_bot_move(GameState, Move),  % Try to find a valid move
+    N1 is N - 1,
+    find_n_moves(N1, GameState, RestMoves).
+
 find_n_moves(0, _, []) :- !. % Stop if no attempts are left
 find_n_moves(N, GameState, [Move]) :-
     N > 0,
@@ -647,7 +652,6 @@ find_n_moves(N, GameState, [Move]) :-
     ;   N1 is N - 1,  % Otherwise, decrement the attempts
         find_n_moves(N1, GameState, [Move])  % Try again
     ).
-
 
 % Find valid moves for a bot
 valid_bot_move(game_state(Board, CurrentPlayer, Players, Pawns, _), 
