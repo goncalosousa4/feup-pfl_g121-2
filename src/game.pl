@@ -139,11 +139,14 @@ initialize_pawns(PlayerA, PlayerB,
 place_pawn(Board, Row, Col, Pawn, NewBoard) :-
     nth1(Row, Board, OldRow, RestRows),
     nth1(Col, OldRow, OldStack, RestCells),
-    (OldStack = 'o' ->
-        NewStack = [Pawn, 'o']
-    ;   append([Pawn], OldStack, NewStack)),
+    create_new_stack(OldStack, Pawn, NewStack),
     nth1(Col, NewRow, NewStack, RestCells),
     nth1(Row, NewBoard, NewRow, RestRows).
+
+% Helper predicate for stack creation using pattern matching
+create_new_stack('o', Pawn, [Pawn, 'o']).
+create_new_stack(OldStack, Pawn, NewStack) :-
+    append([Pawn], OldStack, NewStack).
 
 % Player vs Player
 
@@ -157,41 +160,59 @@ game_cycle_main(GameState, pvp) :-
     ).
 
 % Do the same for other game modes
-game_cycle_main(GameState, pve_easy) :-
-    display_game(GameState),
-    (   game_over(GameState, Winner) ->
-        announce_winner(Winner)
-    ;   GameState = game_state(_, CurrentPlayer, _, _, _),
-        (   CurrentPlayer = playerA -> 
-            make_move(GameState, NewGameState)
-        ;   easy_bot_move(GameState, NewGameState)
-        ),
-        game_cycle_main(NewGameState, pve_easy)
-    ).
+game_cycle_main(game_state(Board, CurrentPlayer, Pawns, Height, Stones), pve_easy) :-
+    display_game(game_state(Board, CurrentPlayer, Pawns, Height, Stones)),
+    process_game_state(game_state(Board, CurrentPlayer, Pawns, Height, Stones), pve_easy).
 
-game_cycle_main(GameState, pve_difficult) :-
-    display_game(GameState),
-    (   game_over(GameState, Winner) ->
-        announce_winner(Winner)
-    ;   GameState = game_state(_, CurrentPlayer, _, _, _),
-        (   CurrentPlayer = playerA -> 
-            make_move(GameState, NewGameState)
-        ;   difficult_bot_move(GameState, NewGameState)
-        ),
-        game_cycle_main(NewGameState, pve_difficult)
-    ).
+process_game_state(GameState, pve_easy) :-
+    game_over(GameState, Winner),
+    !,
+    announce_winner(Winner).
 
-game_cycle_main(GameState, pve_pve) :-
-    display_game(GameState),
-    (   game_over(GameState, Winner) ->
-        announce_winner(Winner)
-    ;   GameState = game_state(_, CurrentPlayer, _, _, _),
-        (   CurrentPlayer = playerA -> 
-            easy_bot_move(GameState, NewGameState)
-        ;   easy_bot_move(GameState, NewGameState)
-        ),
-        game_cycle_main(NewGameState, pve_pve)
-    ).
+process_game_state(game_state(Board, playerA, Pawns, Height, Stones), pve_easy) :-
+    make_move(game_state(Board, playerA, Pawns, Height, Stones), NewGameState),
+    game_cycle_main(NewGameState, pve_easy).
+
+process_game_state(game_state(Board, playerB, Pawns, Height, Stones), pve_easy) :-
+    easy_bot_move(game_state(Board, playerB, Pawns, Height, Stones), NewGameState),
+    game_cycle_main(NewGameState, pve_easy).
+
+% Difficult mode
+game_cycle_main(game_state(Board, CurrentPlayer, Pawns, Height, Stones), pve_difficult) :-
+    display_game(game_state(Board, CurrentPlayer, Pawns, Height, Stones)),
+    process_game_state(game_state(Board, CurrentPlayer, Pawns, Height, Stones), pve_difficult).
+
+process_game_state(GameState, pve_difficult) :-
+    game_over(GameState, Winner),
+    !,
+    announce_winner(Winner).
+
+process_game_state(game_state(Board, playerA, Pawns, Height, Stones), pve_difficult) :-
+    make_move(game_state(Board, playerA, Pawns, Height, Stones), NewGameState),
+    game_cycle_main(NewGameState, pve_difficult).
+
+process_game_state(game_state(Board, playerB, Pawns, Height, Stones), pve_difficult) :-
+    difficult_bot_move(game_state(Board, playerB, Pawns, Height, Stones), NewGameState),
+    game_cycle_main(NewGameState, pve_difficult).
+
+% Bot vs Bot mode
+game_cycle_main(game_state(Board, CurrentPlayer, Pawns, Height, Stones), pve_pve) :-
+    display_game(game_state(Board, CurrentPlayer, Pawns, Height, Stones)),
+    process_game_state(game_state(Board, CurrentPlayer, Pawns, Height, Stones), pve_pve).
+
+process_game_state(GameState, pve_pve) :-
+    game_over(GameState, Winner),
+    !,
+    announce_winner(Winner).
+
+process_game_state(game_state(Board, playerA, Pawns, Height, Stones), pve_pve) :-
+    easy_bot_move(game_state(Board, playerA, Pawns, Height, Stones), NewGameState),
+    game_cycle_main(NewGameState, pve_pve).
+
+process_game_state(game_state(Board, playerB, Pawns, Height, Stones), pve_pve) :-
+    easy_bot_move(game_state(Board, playerB, Pawns, Height, Stones), NewGameState),
+    game_cycle_main(NewGameState, pve_pve).
+
 % Make a move
 make_move(game_state(Board, CurrentPlayer, Players, Pawns, PrevMove), NewGameState) :-
     get_valid_pawn_index_or_surrender(PawnIndex, CurrentPlayer, Pawns, Players),
@@ -206,86 +227,105 @@ get_valid_pawn_index_or_surrender(PawnIndex, CurrentPlayer, Pawns, Players) :-
     repeat,
     write('Choose your pawn index (1 or 2): '),
     read(Input),
-    (Input = surrender ->
-        handle_surrender(CurrentPlayer, Players),
-        !, fail
-    ;   (validate_pawn_index(Input, CurrentPlayer, Pawns) ->
-            PawnIndex = Input,
-            !
-        ;   write('Invalid pawn index! Please choose 1 or 2.\n'),
-            fail
-        )
-    ).
+    process_pawn_input(Input, PawnIndex, CurrentPlayer, Pawns, Players).
+
+process_pawn_input(surrender, _, CurrentPlayer, _, Players) :-
+    handle_surrender(CurrentPlayer, Players),
+    !, fail.
+
+process_pawn_input(Input, Input, CurrentPlayer, Pawns, _) :-
+    validate_pawn_index(Input, CurrentPlayer, Pawns),
+    !.
+
+process_pawn_input(_, _, _, _, _) :-
+    write('Invalid pawn index! Please choose 1 or 2.\n'),
+    fail.
 
 % Get valid move coordinates with retry for the same pawn
 get_valid_move_or_surrender(Board, CurrentPlayer, Pawns, PawnIndex, NewRow, NewCol) :-
     repeat,
     write('Enter your move (NewRow, NewCol): '),
     read(Input),
-    (Input = surrender ->
-        handle_surrender(CurrentPlayer, Players),
-        !, fail
-    ;   Input = (NewRow, NewCol),
-        (validate_pawn_move(Board, CurrentPlayer, Pawns, PawnIndex, NewRow, NewCol) ->
-            !
-        ;   write('Invalid move position! The move must:\n'),
-            write('- Be adjacent or diagonal\n'),
-            write('- Have a valid height difference (-1 to +1)\n'),
-            write('- Not contain another pawn\n'),
-            fail
-        )
-    ).
+    process_move_input(Input, Board, CurrentPlayer, Pawns, PawnIndex, NewRow, NewCol).
 
-% Get valid stone pickup and placement positions
+process_move_input(surrender, _, CurrentPlayer, _, _, _, _) :-
+    handle_surrender(CurrentPlayer, Players),
+    !, fail.
+
+process_move_input((Row, Col), Board, CurrentPlayer, Pawns, PawnIndex, Row, Col) :-
+    validate_pawn_move(Board, CurrentPlayer, Pawns, PawnIndex, Row, Col),
+    !.
+
+process_move_input(_, _, _, _, _, _, _) :-
+    write('Invalid move position! The move must:\n'),
+    write('- Be adjacent or diagonal\n'),
+    write('- Have a valid height difference (-1 to +1)\n'),
+    write('- Not contain another pawn\n'),
+    fail.
+
+% Stone pickup and placement
 get_valid_stone_actions_or_surrender(Board, NewRow, NewCol, PickupRow, PickupCol, PlaceRow, PlaceCol) :-
     repeat,
     write('Enter stone pickup position (Row, Col): '),
     read(Input),
-    (Input = surrender ->
-        handle_surrender(CurrentPlayer, Players),
-        !, fail
-    ;   Input = (PickupRow, PickupCol),
-        (validate_stone_pickup(Board, PickupRow, PickupCol, NewRow, NewCol) ->
-            get_valid_stone_placement_or_surrender(Board, NewRow, NewCol, PickupRow, PickupCol, PlaceRow, PlaceCol),
-            !
-        ;   write('Invalid stone pickup position! The position must:\n'),
-            write('- Contain a stone\n'),
-            write('- Not be where your pawn is\n'),
-            write('- Be one of the smallest stone stacks\n'),
-            fail
-        )
-    ).
+    process_pickup_input(Input, Board, NewRow, NewCol, PickupRow, PickupCol, PlaceRow, PlaceCol).
 
-% Get valid stone placement position
+process_pickup_input(surrender, _, _, _, _, _, _, _) :-
+    handle_surrender(CurrentPlayer, Players),
+    !, fail.
+
+process_pickup_input((Row, Col), Board, NewRow, NewCol, Row, Col, PlaceRow, PlaceCol) :-
+    validate_stone_pickup(Board, Row, Col, NewRow, NewCol),
+    get_valid_stone_placement_or_surrender(Board, NewRow, NewCol, Row, Col, PlaceRow, PlaceCol),
+    !.
+
+process_pickup_input(_, _, _, _, _, _, _, _) :-
+    write('Invalid stone pickup position! The position must:\n'),
+    write('- Contain a stone\n'),
+    write('- Not be where your pawn is\n'),
+    write('- Be one of the smallest stone stacks\n'),
+    fail.
+
+% Stone placement
 get_valid_stone_placement_or_surrender(Board, NewRow, NewCol, PickupRow, PickupCol, PlaceRow, PlaceCol) :-
     repeat,
     write('Enter stone placement position (Row, Col): '),
     read(Input),
-    (Input = surrender ->
-        handle_surrender(CurrentPlayer, Players),
-        !, fail
-    ;   Input = (PlaceRow, PlaceCol),
-        (validate_stone_placement(Board, PlaceRow, PlaceCol, NewRow, NewCol, PickupRow, PickupCol) ->
-            !
-        ;   write('Invalid stone placement position! The position must:\n'),
-            write('- Be different from pickup and pawn positions\n'),
-            write('- Contain stones\n'),
-            write('- Not contain a pawn\n'),
-            fail
-        )
-    ).
+    process_placement_input(Input, Board, NewRow, NewCol, PickupRow, PickupCol, PlaceRow, PlaceCol).
 
-handle_surrender(CurrentPlayer, Players) :-
-    % Find the other player (winner)
-    (CurrentPlayer = playerA -> Winner = playerB ; Winner = playerA),
+process_placement_input(surrender, _, _, _, _, _, _, _) :-
+    handle_surrender(CurrentPlayer, Players),
+    !, fail.
+
+process_placement_input((Row, Col), Board, NewRow, NewCol, PickupRow, PickupCol, Row, Col) :-
+    validate_stone_placement(Board, Row, Col, NewRow, NewCol, PickupRow, PickupCol),
+    !.
+
+process_placement_input(_, _, _, _, _, _, _, _) :-
+    write('Invalid stone placement position! The position must:\n'),
+    write('- Be different from pickup and pawn positions\n'),
+    write('- Contain stones\n'),
+    write('- Not contain a pawn\n'),
+    fail.
+handle_surrender(playerA, Players) :-
     write('\n-------------------------------------------\n'),
     write('-------------------------------------------\n'),
     write('\n                GAME OVER                      \n\n'),
-    write(CurrentPlayer), write(' surrendered!\n\n\n\n'),
-    write(Winner), write(' wins the game!\n'),
+    write(playerA), write(' surrendered!\n\n\n\n'),
+    write(playerB), write(' wins the game!\n'),
     write('-------------------------------------------\n'),
     write('-------------------------------------------\n\n'),
-    throw(game_surrender(Winner)).
+    throw(game_surrender(playerB)).
+
+handle_surrender(playerB, Players) :-
+    write('\n-------------------------------------------\n'),
+    write('-------------------------------------------\n'),
+    write('\n                GAME OVER                      \n\n'),
+    write(playerB), write(' surrendered!\n\n\n\n'),
+    write(playerA), write(' wins the game!\n'),
+    write('-------------------------------------------\n'),
+    write('-------------------------------------------\n\n'),
+    throw(game_surrender(playerA)).
 
 announce_winner(Winner) :-
     write('\n-------------------------------------------\n'),
@@ -312,7 +352,7 @@ validate_stone_placement(Board, PlaceRow, PlaceCol, NewRow, NewCol, PickupRow, P
     valid_stone_placement(Board, PlaceRow, PlaceCol, [NewRow, NewCol], [PickupRow, PickupCol]).
 
 % Move validation and execution
-move(game_state(Board, CurrentPlayer, Players, Pawns, _PrevMove),
+move(game_state(Board, CurrentPlayer, Players, Pawns, _),
      (PawnIndex, NewRow, NewCol, PickupRow, PickupCol, PlaceRow, PlaceCol),
      game_state(FinalBoard, NextPlayer, Players, NewPawns, (NewRow, NewCol))) :-
     % 1. Validate and move pawn
@@ -324,22 +364,13 @@ move(game_state(Board, CurrentPlayer, Players, Pawns, _PrevMove),
     
     % Move pawn to new position, preserving stones
     get_stack(TempBoard1, NewRow, NewCol, TargetStack),
-    (TargetStack = 'o' -> 
-        NewTargetStack = [pawn(CurrentPlayer, PawnIndex), 'o']
-    ; is_list(TargetStack) ->
-        append([pawn(CurrentPlayer, PawnIndex)], TargetStack, NewTargetStack)
-    ; NewTargetStack = [pawn(CurrentPlayer, PawnIndex)]),
+    create_new_target_stack(TargetStack, CurrentPlayer, PawnIndex, NewTargetStack),
     update_board(TempBoard1, NewRow, NewCol, NewTargetStack, TempBoard2),
     
     % 2. Pick up stone
     valid_stone_pickup(TempBoard2, PickupRow, PickupCol, [NewRow, NewCol]),
     get_stack(TempBoard2, PickupRow, PickupCol, PickupStack),
-    (PickupStack = 'o' ->
-        update_board(TempBoard2, PickupRow, PickupCol, [], TempBoard3)
-    ; is_list(PickupStack) ->
-        remove_one_stone(PickupStack, NewPickupStack),
-        update_board(TempBoard2, PickupRow, PickupCol, NewPickupStack, TempBoard3)
-    ),
+    process_pickup_stack(PickupStack, TempBoard2, PickupRow, PickupCol, TempBoard3),
     
     % 3. Place stone
     valid_stone_placement(TempBoard3, PlaceRow, PlaceCol, [NewRow, NewCol], [PickupRow, PickupCol]),
@@ -350,6 +381,20 @@ move(game_state(Board, CurrentPlayer, Players, Pawns, _PrevMove),
     % Update pawns and switch player
     update_pawns(Pawns, CurrentPlayer, PawnIndex, [NewRow, NewCol], NewPawns),
     switch_player(CurrentPlayer, Players, NextPlayer).
+
+% Helper predicates for stack processing
+create_new_target_stack('o', CurrentPlayer, PawnIndex, [pawn(CurrentPlayer, PawnIndex), 'o']).
+create_new_target_stack(Stack, CurrentPlayer, PawnIndex, NewStack) :-
+    is_list(Stack),
+    append([pawn(CurrentPlayer, PawnIndex)], Stack, NewStack).
+create_new_target_stack(_, CurrentPlayer, PawnIndex, [pawn(CurrentPlayer, PawnIndex)]).
+
+process_pickup_stack('o', TempBoard, Row, Col, NewBoard) :-
+    update_board(TempBoard, Row, Col, [], NewBoard).
+process_pickup_stack(Stack, TempBoard, Row, Col, NewBoard) :-
+    is_list(Stack),
+    remove_one_stone(Stack, NewStack),
+    update_board(TempBoard, Row, Col, NewStack, NewBoard).
 
 valid_moves(Board, [CurrRow, CurrCol], [NewRow, NewCol]) :-
     length(Board, Size),
@@ -484,27 +529,20 @@ switch_player(playerA, _, playerB).
 switch_player(playerB, _, playerA).
 
 % The game is over if the current player has no valid moves left
-game_over(game_state(Board, CurrentPlayer, Players, Pawns, _PrevMove), Winner) :-
-    % Find all pawns of the current player that have no valid moves
+game_over(game_state(Board, playerA, Players, Pawns, _), playerB) :-
+    find_pawns_without_moves(Board, playerA, Pawns, NoMoves),
+    NoMoves \= [].
+
+game_over(game_state(Board, playerB, Players, Pawns, _), playerA) :-
+    find_pawns_without_moves(Board, playerB, Pawns, NoMoves),
+    NoMoves \= [].
+
+% Helper predicate to find pawns without valid moves
+find_pawns_without_moves(Board, Player, Pawns, NoMoves) :-
     findall([PawnIndex, CurrRow, CurrCol],
-            (select_pawn(CurrentPlayer, Pawns, PawnIndex, [CurrRow, CurrCol]),
-             \+ has_valid_move(Board, [CurrRow, CurrCol])  % Check if the pawn has no valid moves
-            ),
-            NoMoves),
-    
-    % If there are no valid moves for at least one pawn, the game is over
-    NoMoves \= [],
-    (   CurrentPlayer = playerA -> Winner = playerB
-    ;   Winner = playerA
-    ).
-
-player1_wins(GameState) :- % Add logic to determine if Player 1 has won
-    % Example condition for Player 1 winning
-    GameState = state([player1, _, _, _, _, _, _, _, _]).
-
-player2_wins(GameState) :- % Add logic to determine if Player 2 has won
-    % Example condition for Player 2 winning
-    GameState = state([_, _, _, _, player2, _, _, _, _]).
+            (select_pawn(Player, Pawns, PawnIndex, [CurrRow, CurrCol]),
+             \+ has_valid_move(Board, [CurrRow, CurrCol])),
+            NoMoves).
 
 has_valid_move(Board, [CurrRow, CurrCol]) :-
     % Generate all possible adjacent cells
@@ -595,7 +633,7 @@ sum_list([H|T], Sum) :-
 
 % Easy bot: Random valid move
 easy_bot_move(GameState, NewGameState) :-
-    find_n_moves(1000, GameState, Moves),
+    find_n_moves(1000000, GameState, Moves),
     % Randomly select one of these moves
     random_member(BotMove, Moves),
     execute_move(GameState, BotMove, NewGameState).
