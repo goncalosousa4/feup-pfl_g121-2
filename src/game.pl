@@ -22,15 +22,21 @@ display_values(GameState, [Player|Rest]) :-
     display_values(GameState, Rest).
 
 % Display cell based on content
-display_cell([]) :- write('[ ]').
+display_cell([]) :- write('[  ]').
 display_cell('o') :- write(' 1o ').
 display_cell([pawn(Player, Number) | Rest]) :- 
     sub_atom(Player, 6, 1, _, PlayerLetter),
     write(PlayerLetter), write(Number),
-    display_cell(Rest).
+    display_rest(Rest).                      % Display remaining cell content
 display_cell(Stack) :-
-    is_list(Stack),
-    count_stones(Stack, N),
+    is_list(Stack),                          % If its a stack of stones
+    count_stones(Stack, N),                  % Count the stones
+    write(' '), write(N), write('o ').
+
+% Helper to display remaining content (stones) when a pawn exists
+display_rest([]).  % No additional content to display
+display_rest(['o' | Rest]) :-
+    count_stones(['o' | Rest], N),           % Count the remaining stones
     write(N), write('o').
 
 
