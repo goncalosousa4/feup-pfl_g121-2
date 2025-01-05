@@ -169,21 +169,81 @@ game_cycle(GameState, pve_pve) :-
 
 % Make a move
 make_move(game_state(Board, CurrentPlayer, Players, Pawns, PrevMove), NewGameState) :-
+    get_valid_pawn_index(PawnIndex, CurrentPlayer, Pawns),
+    get_valid_move(Board, CurrentPlayer, Pawns, PawnIndex, NewRow, NewCol),
+    get_valid_stone_actions(Board, NewRow, NewCol, PickupRow, PickupCol, PlaceRow, PlaceCol),
+    move(game_state(Board, CurrentPlayer, Players, Pawns, PrevMove),
+         (PawnIndex, NewRow, NewCol, PickupRow, PickupCol, PlaceRow, PlaceCol),
+         NewGameState).
+
+% Get valid pawn index with retry
+get_valid_pawn_index(PawnIndex, CurrentPlayer, Pawns) :-
+    repeat,
     write('Choose your pawn index (1 or 2): '),
     read(PawnIndex),
+    (validate_pawn_index(PawnIndex, CurrentPlayer, Pawns) ->
+        !
+    ;   write('Invalid pawn index! Please choose 1 or 2.\n'),
+        fail
+    ).
+
+% Get valid move coordinates with retry for the same pawn
+get_valid_move(Board, CurrentPlayer, Pawns, PawnIndex, NewRow, NewCol) :-
+    repeat,
     write('Enter your move (NewRow, NewCol): '),
     read((NewRow, NewCol)),
+    (validate_pawn_move(Board, CurrentPlayer, Pawns, PawnIndex, NewRow, NewCol) ->
+        !
+    ;   write('Invalid move position! The move must:\n'),
+        write('- Be adjacent or diagonal\n'),
+        write('- Have a valid height difference (-1 to +1)\n'),
+        write('- Not contain another pawn\n'),
+        fail
+    ).
+
+% Get valid stone pickup and placement positions
+get_valid_stone_actions(Board, NewRow, NewCol, PickupRow, PickupCol, PlaceRow, PlaceCol) :-
+    repeat,
     write('Enter stone pickup position (Row, Col): '),
     read((PickupRow, PickupCol)),
+    (validate_stone_pickup(Board, PickupRow, PickupCol, NewRow, NewCol) ->
+        get_valid_stone_placement(Board, NewRow, NewCol, PickupRow, PickupCol, PlaceRow, PlaceCol),
+        !
+    ;   write('Invalid stone pickup position! The position must:\n'),
+        write('- Contain a stone\n'),
+        write('- Not be where your pawn is\n'),
+        write('- Be one of the smallest stone stacks\n'),
+        fail
+    ).
+
+% Get valid stone placement position
+get_valid_stone_placement(Board, NewRow, NewCol, PickupRow, PickupCol, PlaceRow, PlaceCol) :-
+    repeat,
     write('Enter stone placement position (Row, Col): '),
     read((PlaceRow, PlaceCol)),
-    (move(game_state(Board, CurrentPlayer, Players, Pawns, PrevMove), 
-          (PawnIndex, NewRow, NewCol, PickupRow, PickupCol, PlaceRow, PlaceCol), 
-          NewGameState) ->
-        true
-    ;   write('Invalid move, try again.'), nl,
-        make_move(game_state(Board, CurrentPlayer, Players, Pawns, PrevMove), NewGameState)
+    (validate_stone_placement(Board, PlaceRow, PlaceCol, NewRow, NewCol, PickupRow, PickupCol) ->
+        !
+    ;   write('Invalid stone placement position! The position must:\n'),
+        write('- Be different from pickup and pawn positions\n'),
+        write('- Contain stones\n'),
+        write('- Not contain a pawn\n'),
+        fail
     ).
+
+% Validation predicates remain the same
+validate_pawn_index(PawnIndex, CurrentPlayer, Pawns) :-
+    member(PawnIndex, [1, 2]),
+    select_pawn(CurrentPlayer, Pawns, PawnIndex, _).
+
+validate_pawn_move(Board, CurrentPlayer, Pawns, PawnIndex, NewRow, NewCol) :-
+    select_pawn(CurrentPlayer, Pawns, PawnIndex, [CurrRow, CurrCol]),
+    valid_moves(Board, [CurrRow, CurrCol], [NewRow, NewCol]).
+
+validate_stone_pickup(Board, PickupRow, PickupCol, NewRow, NewCol) :-
+    valid_stone_pickup(Board, PickupRow, PickupCol, [NewRow, NewCol]).
+
+validate_stone_placement(Board, PlaceRow, PlaceCol, NewRow, NewCol, PickupRow, PickupCol) :-
+    valid_stone_placement(Board, PlaceRow, PlaceCol, [NewRow, NewCol], [PickupRow, PickupCol]).
 
 % Move validation and execution
 move(game_state(Board, CurrentPlayer, Players, Pawns, _PrevMove),
@@ -551,3 +611,4 @@ valid_bot_move(game_state(Board, CurrentPlayer, Players, Pawns, _),
 % Execute a move for the bot
 execute_move(GameState, (PawnIndex, NewRow, NewCol, PickupRow, PickupCol, PlaceRow, PlaceCol), NewGameState) :-
     move(GameState, (PawnIndex, NewRow, NewCol, PickupRow, PickupCol, PlaceRow, PlaceCol), NewGameState).
+
