@@ -2,11 +2,21 @@
 :- use_module(library(between)).
 
 % Display the game state
-display_game(game_state(Board, CurrentPlayer, _Players, Pawns, PrevMove)) :-
+display_game(GameState) :-
+    GameState = game_state(Board, CurrentPlayer, Players, Pawns, PrevMove),
     nl, write('Current Player: '), write(CurrentPlayer), nl,
     display_board(Board),
     nl, write('Pawns: '), write(Pawns), nl,
-    write('Previous Move: '), write(PrevMove), nl.
+    write('Previous Move: '), write(PrevMove), nl,
+    % Add value display for both players
+    display_values(GameState, Players).
+
+% Helper predicate to display values for all players
+display_values(GameState, []).
+display_values(GameState, [Player|Rest]) :-
+    value(GameState, Player, Value),
+    format('~w: ~2f~n', [Player, Value]),
+    display_values(GameState, Rest).
 
 % Display cell based on content
 display_cell([]) :- write('[ ]').
@@ -336,5 +346,64 @@ adjacent_cell(CurrRow, CurrCol, NewRow, NewCol) :-
     NewCol > 0, NewCol =< 5.
 
 
+% Main value predicate
+value(game_state(Board, _, Players, Pawns, _), Player, Value) :-
+    % Calculate mobility score
+    mobility_score(Board, Pawns, Player, MobilityScore),
+    
+    % Calculate height advantage score
+    height_score(Board, Pawns, Player, HeightScore),
+    
+    % Calculate position score
+    position_score(Board, Pawns, Player, PositionScore),
+    
+    % Calculate final value (weighted sum of all factors)
+    Value is (MobilityScore * 0.5) + (HeightScore * 0.3) + (PositionScore * 0.2) + 50.
 
+% Mobility score - counts number of valid moves available
+mobility_score(Board, Pawns, Player, Score) :-
+    findall(1, 
+            (select_pawn(Player, Pawns, PawnIndex, [Row, Col]),
+             adjacent_cell(Row, Col, NewRow, NewCol),
+             valid_moves(Board, [Row, Col], [NewRow, NewCol])),
+            Moves),
+    length(Moves, NumMoves),
+    Score is NumMoves * 10.  % Multiply by 10 to give more weight to mobility
+
+% Height score - evaluates the height advantage of player's pawns
+height_score(Board, Pawns, Player, Score) :-
+    findall(Height,
+            (select_pawn(Player, Pawns, _, [Row, Col]),
+             get_stone_only_height(Board, Row, Col, Height)),
+            Heights),
+    sum_list(Heights, TotalHeight),
+    Score is TotalHeight * 10.  % Multiply by 15 to give significant weight to height advantage
+
+% Position score - evaluates strategic positioning
+position_score(Board, Pawns, Player, Score) :-
+    findall(PositionValue,
+            (select_pawn(Player, Pawns, _, [Row, Col]),
+             calculate_position_value(Row, Col, PositionValue)),
+            PositionValues),
+    sum_list(PositionValues, Score).
+
+% Helper predicate to calculate position value based on board position
+calculate_position_value(Row, Col, Value) :-
+    % Center positions are worth more
+    (Row = 3, Col = 3 -> 
+        Value = 30
+    ; (Row = 3; Col = 3) ->
+        Value = 20
+    ; % Corner positions are worth less
+    ((Row = 1; Row = 5), (Col = 1; Col = 5)) ->
+        Value = 10
+    ; % Other positions have moderate value
+        Value = 15
+    ).
+
+% Helper predicate to sum a list
+sum_list([], 0).
+sum_list([H|T], Sum) :-
+    sum_list(T, RestSum),
+    Sum is H + RestSum.
 
