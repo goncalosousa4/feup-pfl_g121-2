@@ -1,5 +1,6 @@
 :- use_module(library(lists)).
 :- use_module(library(between)).
+:- use_module(library(random)).
 
 % Display the game state
 display_game(GameState) :-
@@ -67,8 +68,24 @@ display_row([Cell|Rest]) :-
 
 % Game initialization
 play :-
-    initial_state([playerA, playerB, 5], GameState),
-    game_cycle(GameState).
+    select_game_mode(Mode),
+    initialize_game(Mode, GameState),
+    game_cycle(GameState, Mode).
+
+select_game_mode(Mode) :-
+    nl, write('Select Game Mode:'), nl,
+    write('1 - Player vs Player'), nl,
+    write('2 - Player vs Easy Bot'), nl,
+    write('3 - Player vs Difficult Bot'), nl,
+    read(Choice),
+    (   Choice = 1 -> Mode = pvp
+    ;   Choice = 2 -> Mode = pve_easy
+    ;   Choice = 3 -> Mode = pve_difficult
+    ;   write('Invalid choice, try again.'), nl, select_game_mode(Mode)
+    ).
+
+initialize_game(_, GameState) :-
+    initial_state([playerA, playerB, 5], GameState).
 
 initial_state([PlayerA, PlayerB, Size], game_state(Board, PlayerA, [PlayerA, PlayerB], Pawns, no_prev_move)) :-
     create_initial_board(Size, EmptyBoard),
@@ -100,13 +117,39 @@ place_pawn(Board, Row, Col, Pawn, NewBoard) :-
     nth1(Col, NewRow, NewStack, RestCells),
     nth1(Row, NewBoard, NewRow, RestRows).
 
-% Game cycle
-game_cycle(GameState) :-
+% Player vs Player
+game_cycle(GameState, pvp) :-
     display_game(GameState),
-    (game_over(GameState) ->
-        nl, write('Game Over!'), nl
+    (   game_over(GameState) ->
+            nl, write('Game Over!'), nl
     ;   make_move(GameState, NewGameState),
-        game_cycle(NewGameState)
+        game_cycle(NewGameState, pvp)
+    ).
+
+% Player vs Easy Bot
+game_cycle(GameState, pve_easy) :-
+    display_game(GameState),
+    (   game_over(GameState) ->
+            nl, write('Game Over!'), nl
+    ;   GameState = game_state(_, CurrentPlayer, _, _, _),
+        (   CurrentPlayer = playerA -> 
+                make_move(GameState, NewGameState)
+        ;   easy_bot_move(GameState, NewGameState)
+        ),
+        game_cycle(NewGameState, pve_easy)  % Continue to the next cycle
+    ).
+
+    % Player vs Difficult Bot
+game_cycle(GameState, pve_difficult) :-
+    display_game(GameState),
+    (   game_over(GameState) ->
+            nl, write('Game Over!'), nl
+    ;   GameState = game_state(_, CurrentPlayer, _, _, _),
+        (   CurrentPlayer = playerA -> 
+                make_move(GameState, NewGameState)
+        ;   difficult_bot_move(GameState, NewGameState)
+        ),
+        game_cycle(NewGameState, pve_difficult)  % Continue to the next cycle
     ).
 
 % Make a move
@@ -295,11 +338,9 @@ update_pawns([pawns(Player, PawnList) | Rest], Player, Index, NewPos,
 update_pawns([Other | Rest], Player, Index, NewPos, [Other | NewRest]) :-
     update_pawns(Rest, Player, Index, NewPos, NewRest).
 
-% Switch players
-switch_player(CurrentPlayer, [CurrentPlayer, OtherPlayer], OtherPlayer).
-switch_player(CurrentPlayer, [OtherPlayer, CurrentPlayer], OtherPlayer).
-
-:- use_module(library(lists)).
+% Switch to the next player
+switch_player(playerA, _, playerB).
+switch_player(playerB, _, playerA).
 
 % The game is over if the current player has no valid moves left
 game_over(game_state(Board, CurrentPlayer, Players, Pawns, _PrevMove)) :-
@@ -356,8 +397,7 @@ value(game_state(Board, _, Players, Pawns, _), Player, Value) :-
     
     % Calculate position score
     position_score(Board, Pawns, Player, PositionScore),
-    
-    % Calculate final value (weighted sum of all factors)
+
     Value is (MobilityScore * 0.5) + (HeightScore * 0.3) + (PositionScore * 0.2) + 50.
 
 % Mobility score - counts number of valid moves available
@@ -407,3 +447,68 @@ sum_list([H|T], Sum) :-
     sum_list(T, RestSum),
     Sum is H + RestSum.
 
+% Easy bot: Random valid move
+easy_bot_move(GameState, NewGameState) :-
+    % Collect at most 10 valid moves
+    find_n_moves(100, GameState, Moves),
+    write('Moves Found: '), write(Moves), nl,
+    % Randomly select one of these moves
+    random_member(BotMove, Moves),
+    execute_move(GameState, BotMove, NewGameState).
+
+difficult_bot_move(GameState, NewGameState) :-
+    % Collect at most 50 valid moves
+    find_n_moves(5, GameState, Moves),
+    
+    % Evaluate the resulting game state for each move
+    findall(Value-NewState-BotMove, (
+        member(Move, Moves),
+        execute_move(GameState, Move, NewState),   % Apply the move to get the new game state
+        value(NewState, Player, Value)              % Evaluate the value of the new state for the player
+    ), EvaluatedMoves),
+    
+    % Write out the evaluated moves for debugging
+    write('Moves Found: '), write(EvaluatedMoves), nl,
+    
+    % Sort the evaluated moves by value (in descending order)
+    sort_by_value(EvaluatedMoves, SortedMoves),
+    
+    % Select the best move (the one with the highest value)
+    SortedMoves = [BestValue-BestNewState-BestMove|_],
+    
+    % Apply the best move to get the final new game state
+    execute_move(GameState, BestMove, NewGameState).
+
+% Predicate to sort evaluated moves based on the value (in descending order)
+sort_by_value(Moves, SortedMoves) :-
+    % Sort moves in descending order of Value (first element in the triplet)
+    keysort(Moves, TempSortedMoves), % Sort by first element in ascending order
+    reverse(TempSortedMoves, SortedMoves).  % Reverse the list to make it descending order
+
+
+% Find at most N valid moves for a bot
+find_n_moves(N, GameState, Moves) :-
+    findall(Move, valid_bot_move(GameState, Move), AllMoves),
+    length(Moves, N),
+    append(Moves, _, AllMoves).  % Truncate the list to the first N moves
+
+% Find valid moves for a bot
+valid_bot_move(game_state(Board, CurrentPlayer, Players, Pawns, _), 
+               (PawnIndex, NewRow, NewCol, PickupRow, PickupCol, PlaceRow, PlaceCol)) :-
+    select_pawn(CurrentPlayer, Pawns, PawnIndex, [CurrRow, CurrCol]),
+    %write('Pawn: '), write(PawnIndex), write(' at '), write([CurrRow, CurrCol]), nl,
+    adjacent_cell(CurrRow, CurrCol, NewRow, NewCol),
+    %write('Move to: '), write([NewRow, NewCol]), nl,
+    valid_moves(Board, [CurrRow, CurrCol], [NewRow, NewCol]),
+    %write('Valid move.'), nl,
+    valid_stone_pickup(Board, PickupRow, PickupCol, [NewRow, NewCol]),
+    %write('Pickup: '), write([PickupRow, PickupCol]), nl,
+    length(Board, BoardSize),
+    between(1, BoardSize, PlaceRow),  % Generate rows within board range
+    between(1, BoardSize, PlaceCol), % Generate cols within board range
+    valid_stone_placement(Board, PlaceRow, PlaceCol, [NewRow, NewCol], [PickupRow, PickupCol]).
+    %write('Placement: '), write([PlaceRow, PlaceCol]), nl.
+
+% Execute a move for the bot
+execute_move(GameState, (PawnIndex, NewRow, NewCol, PickupRow, PickupCol, PlaceRow, PlaceCol), NewGameState) :-
+    move(GameState, (PawnIndex, NewRow, NewCol, PickupRow, PickupCol, PlaceRow, PlaceCol), NewGameState).
