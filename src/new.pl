@@ -1,33 +1,50 @@
-:- use_module(library(lists)).     % might be necessary
+:- use_module(library(lists)).
 :- use_module(library(between)).
 
 % Display the game state
-display_game(game_state(Board, CurrentPlayer, _Players, Pawns, PrevMove)) :-
+display_game(GameState) :-
+    GameState = game_state(Board, CurrentPlayer, Players, Pawns, PrevMove),
     nl, write('Current Player: '), write(CurrentPlayer), nl,
     display_board(Board),
     nl, write('Pawns: '), write(Pawns), nl,
-    write('Previous Move: '), write(PrevMove), nl.
+    write('Previous Move: '), write(PrevMove), nl,
+    % Add value display for both players
+    display_values(GameState, Players).
 
-% Updated display cell logic to show stacks as No
-display_cell([]) :- write('[ ]'). % Empty space displays as []
-display_cell('o') :- write('o').  % Single stone
-display_cell([pawn(Player, Number) | _]) :- 
-    sub_atom(Player, 6, 1, _, PlayerLetter),  % Extract player letter (e.g., A or B)
-    write(PlayerLetter), write(Number).       % Display as "A1" or "B1"
+% Helper predicate to display values for all players
+display_values(GameState, []).
+display_values(GameState, [Player|Rest]) :-
+    value(GameState, Player, Value),
+    format('~w: ~2f~n', [Player, Value]),
+    display_values(GameState, Rest).
 
-% For stacked stones, count them and display as No (e.g., 2o for two stones)
+% Display cell based on content
+display_cell([]) :- write('[ ]').
+display_cell('o') :- write('o').
+display_cell([pawn(Player, Number) | Rest]) :- 
+    sub_atom(Player, 6, 1, _, PlayerLetter),
+    write(PlayerLetter), write(Number),
+    (Rest = ['o'] -> write('o') ; true).
 display_cell(Stack) :-
     is_list(Stack),
     count_stones(Stack, N),
     N > 0,
-    write(N), write('o').
+    write_stones(N).  % Write repeated 'o' for stones
+
+% Helper to write 'o' N times
+write_stones(0).  % No stones to write
+write_stones(N) :- 
+    N > 0, 
+    write('o'), 
+    N1 is N - 1, 
+    write_stones(N1).
 
 % Count stones in a stack
-count_stones([], 1).
+count_stones([], 0).
 count_stones(['o'|Rest], N) :-
     count_stones(Rest, N1),
     N is N1 + 1.
-count_stones([_|Rest], N) :-  % Skip non-stone elements (like pawns)
+count_stones([pawn(_,_)|Rest], N) :-
     count_stones(Rest, N).
 
 display_board(Board) :-
@@ -66,9 +83,9 @@ create_row(Size, Row) :-
     maplist(=('o'), Row).
 
 initialize_pawns(PlayerA, PlayerB, 
-                 [pawns(PlayerA, [[1, 1], [5, 5]]), 
-                  pawns(PlayerB, [[1, 5], [5, 1]])], 
-                 EmptyBoard, Board) :-
+                [pawns(PlayerA, [[1, 1], [5, 5]]), 
+                 pawns(PlayerB, [[1, 5], [5, 1]])], 
+                EmptyBoard, Board) :-
     place_pawn(EmptyBoard, 1, 1, pawn(PlayerA, 1), TempBoard1),
     place_pawn(TempBoard1, 5, 5, pawn(PlayerA, 2), TempBoard2),
     place_pawn(TempBoard2, 1, 5, pawn(PlayerB, 1), TempBoard3),
@@ -77,23 +94,22 @@ initialize_pawns(PlayerA, PlayerB,
 place_pawn(Board, Row, Col, Pawn, NewBoard) :-
     nth1(Row, Board, OldRow, RestRows),
     nth1(Col, OldRow, OldStack, RestCells),
-    append([Pawn], OldStack, NewStack),
+    (OldStack = 'o' ->
+        NewStack = [Pawn, 'o']
+    ;   append([Pawn], OldStack, NewStack)),
     nth1(Col, NewRow, NewStack, RestCells),
     nth1(Row, NewBoard, NewRow, RestRows).
 
 % Game cycle
 game_cycle(GameState) :-
     display_game(GameState),
-    (   game_over(GameState) ->
+    (game_over(GameState) ->
         nl, write('Game Over!'), nl
     ;   make_move(GameState, NewGameState),
         game_cycle(NewGameState)
     ).
 
-% Check winner (stub)
-game_over(_) :- fail.
-
-% Make a move with stone movement
+% Make a move
 make_move(game_state(Board, CurrentPlayer, Players, Pawns, PrevMove), NewGameState) :-
     write('Choose your pawn index (1 or 2): '),
     read(PawnIndex),
@@ -103,104 +119,161 @@ make_move(game_state(Board, CurrentPlayer, Players, Pawns, PrevMove), NewGameSta
     read((PickupRow, PickupCol)),
     write('Enter stone placement position (Row, Col): '),
     read((PlaceRow, PlaceCol)),
-    (   move(game_state(Board, CurrentPlayer, Players, Pawns, PrevMove), 
-             (PawnIndex, NewRow, NewCol, PickupRow, PickupCol, PlaceRow, PlaceCol), 
-             NewGameState) ->
+    (move(game_state(Board, CurrentPlayer, Players, Pawns, PrevMove), 
+          (PawnIndex, NewRow, NewCol, PickupRow, PickupCol, PlaceRow, PlaceCol), 
+          NewGameState) ->
         true
     ;   write('Invalid move, try again.'), nl,
         make_move(game_state(Board, CurrentPlayer, Players, Pawns, PrevMove), NewGameState)
     ).
 
-% Updated move predicate with stone movement
-move(game_state(Board, CurrentPlayer, Players, Pawns, _PrevMove), 
-     (PawnIndex, NewRow, NewCol, PickupRow, PickupCol, PlaceRow, PlaceCol), 
+% Move validation and execution
+move(game_state(Board, CurrentPlayer, Players, Pawns, _PrevMove),
+     (PawnIndex, NewRow, NewCol, PickupRow, PickupCol, PlaceRow, PlaceCol),
      game_state(FinalBoard, NextPlayer, Players, NewPawns, (NewRow, NewCol))) :-
-    % 1. Move pawn
+    % 1. Validate and move pawn
     select_pawn(CurrentPlayer, Pawns, PawnIndex, [CurrRow, CurrCol]),
     valid_moves(Board, [CurrRow, CurrCol], [NewRow, NewCol]),
     
-    % Get the stone from current position before moving pawn
-    get_stack(Board, CurrRow, CurrCol, CurrStack),
-    % Remove pawn but keep stone
+    % Keep stone at current position when moving pawn
     update_board(Board, CurrRow, CurrCol, ['o'], TempBoard1),
     
-    % Add pawn to new position while preserving stones
+    % Move pawn to new position, preserving stones
     get_stack(TempBoard1, NewRow, NewCol, TargetStack),
     (TargetStack = 'o' -> 
-        update_board(TempBoard1, NewRow, NewCol, [pawn(CurrentPlayer, PawnIndex), 'o'], TempBoard2)
+        NewTargetStack = [pawn(CurrentPlayer, PawnIndex), 'o']
     ; is_list(TargetStack) ->
-        append([pawn(CurrentPlayer, PawnIndex)], TargetStack, NewStack),
-        update_board(TempBoard1, NewRow, NewCol, NewStack, TempBoard2)
-    ; update_board(TempBoard1, NewRow, NewCol, [pawn(CurrentPlayer, PawnIndex)], TempBoard2)),
+        append([pawn(CurrentPlayer, PawnIndex)], TargetStack, NewTargetStack)
+    ; NewTargetStack = [pawn(CurrentPlayer, PawnIndex)]),
+    update_board(TempBoard1, NewRow, NewCol, NewTargetStack, TempBoard2),
     
     % 2. Pick up stone
     valid_stone_pickup(TempBoard2, PickupRow, PickupCol, [NewRow, NewCol]),
-    update_board(TempBoard2, PickupRow, PickupCol, [], TempBoard3),
+    get_stack(TempBoard2, PickupRow, PickupCol, PickupStack),
+    (PickupStack = 'o' ->
+        update_board(TempBoard2, PickupRow, PickupCol, [], TempBoard3)
+    ; is_list(PickupStack) ->
+        remove_one_stone(PickupStack, NewPickupStack),
+        update_board(TempBoard2, PickupRow, PickupCol, NewPickupStack, TempBoard3)
+    ),
     
     % 3. Place stone
     valid_stone_placement(TempBoard3, PlaceRow, PlaceCol, [NewRow, NewCol], [PickupRow, PickupCol]),
     get_stack(TempBoard3, PlaceRow, PlaceCol, PlaceStack),
-    (PlaceStack = 'o' ->
-        update_board(TempBoard3, PlaceRow, PlaceCol, ['o', 'o'], FinalBoard)
-    ; PlaceStack = [] ->
-        update_board(TempBoard3, PlaceRow, PlaceCol, ['o'], FinalBoard)
-    ; append(['o'], PlaceStack, NewPlaceStack),
-        update_board(TempBoard3, PlaceRow, PlaceCol, NewPlaceStack, FinalBoard)),
+    add_stone_to_stack(PlaceStack, NewPlaceStack),
+    update_board(TempBoard3, PlaceRow, PlaceCol, NewPlaceStack, FinalBoard),
     
     % Update pawns and switch player
     update_pawns(Pawns, CurrentPlayer, PawnIndex, [NewRow, NewCol], NewPawns),
     switch_player(CurrentPlayer, Players, NextPlayer).
+
+valid_moves(Board, [CurrRow, CurrCol], [NewRow, NewCol]) :-
+    length(Board, Size),
+    
+    % Check bounds
+    (NewRow > 0, NewRow =< Size, NewCol > 0, NewCol =< Size),
+    
+    RowDiff is NewRow - CurrRow,
+    ColDiff is NewCol - CurrCol,
+    
+    % Ensure we are moving, not staying in the same position
+    \+ (RowDiff = 0, ColDiff = 0),
+    
+    % Allow diagonal or adjacent moves
+    abs(RowDiff) =< 1,
+    abs(ColDiff) =< 1,
+    
+    % Check stone height difference
+    get_stone_only_height(Board, CurrRow, CurrCol, CurrHeight),
+    get_stone_only_height(Board, NewRow, NewCol, NewHeight),
+    HeightDiff is NewHeight - CurrHeight,
+    
+    % Validate the height difference
+    between(-1, 1, HeightDiff),
+    
+    % Ensure the target position has something (either a pawn or a stone)
+    get_stack(Board, NewRow, NewCol, Stack),
+    Stack \= [ ], % Disallow moving to an empty space
+    (Stack = 'o' ; is_list(Stack)), % Target must have stones or a stack
+    
+    % Ensure the target position does not have another pawn
+    \+ (is_list(Stack), member(pawn(_, _), Stack)).
 
 % Get stack at position
 get_stack(Board, Row, Col, Stack) :-
     nth1(Row, Board, RowList),
     nth1(Col, RowList, Stack).
 
-% Get stack height
-get_stack_height(Board, Row, Col, Height) :-
+% Get height counting only stones
+get_stone_only_height(Board, Row, Col, Height) :-
     get_stack(Board, Row, Col, Stack),
-    stack_height(Stack, Height).
+    count_only_stones(Stack, Height).
 
-% Calculate height of a stack
-stack_height('o', 1).  % Single stone
-stack_height([], 0).   % Empty space
-stack_height(Stack, Height) :-    % List of pieces
+% Count only stones in a stack
+count_only_stones('o', 1) :- !.
+count_only_stones([], 0) :- !.
+count_only_stones(Stack, Height) :-
     is_list(Stack),
-    length(Stack, Height).
+    include(=(o), Stack, Stones),
+    length(Stones, Height).
 
 % Validate stone pickup
 valid_stone_pickup(Board, Row, Col, [PawnRow, PawnCol]) :-
     get_stack(Board, Row, Col, Stack),
-    % Stack must be unoccupied (no pawns) and contain a stone
-    Stack = 'o',
-    % Cannot be the stack we just moved from
+    
+    % Must contain a stone and not be empty
+    (Stack = 'o' ; (is_list(Stack), member('o', Stack))),
+    
+    % Cannot be the stack where the current pawn is placed
     (Row \= PawnRow ; Col \= PawnCol),
-    % Must be one of the smallest stacks
-    is_smallest_stack(Board, Row, Col).
+    
+    % Ensure the position doesnt contain a pawn (we can't take stones from a pawn's position)
+    \+ (is_list(Stack), member(pawn(_, _), Stack)),
 
-% Check for pawn in stack
-has_pawn([pawn(_, _)|_]).
-has_pawn('o') :- false.
-has_pawn([]) :- false.
-
-% Validate smallest stack
-is_smallest_stack(Board, Row, Col) :-
-    get_stack_height(Board, Row, Col, Height),
-    \+ (nth1(R, Board, RowList),
-        nth1(C, RowList, OtherStack),
+    % Must be one of the smallest stacks (counting only stones)
+    get_stone_only_height(Board, Row, Col, Height),
+    \+ (between(1, 5, R),
+        between(1, 5, C),
         (R \= Row ; C \= Col),
-        OtherStack = 'o',  % Only compare with stacks that have stones
-        get_stack_height(Board, R, C, OtherHeight),
-        OtherHeight < Height).
+        get_stack(Board, R, C, OtherStack),
+        (OtherStack = 'o' ; (is_list(OtherStack), member('o', OtherStack))),
+        (R \= PawnRow ; C \= PawnCol),
+        get_stone_only_height(Board, R, C, OtherHeight),
+        OtherHeight < Height
+    ).
 
-% Validate stone placement
+
 valid_stone_placement(Board, Row, Col, [PawnRow, PawnCol], [PickupRow, PickupCol]) :-
-    get_stack(Board, Row, Col, Stack),
     % Must be a different position than pickup and pawn
     (Row \= PawnRow ; Col \= PawnCol),
     (Row \= PickupRow ; Col \= PickupCol),
-    % Stack must exist and be unoccupied
-    Stack = 'o'.
+    
+    % Position must exist on board
+    length(Board, Size),
+    Row > 0, Row =< Size,
+    Col > 0, Col =< Size,
+    
+    % Get current stack at target
+    get_stack(Board, Row, Col, Stack),
+
+    % Ensure target position is not empty
+    Stack \= [ ],  % Disallow placement in empty positions
+    
+    % Allow placement only on stacks with stones or valid stacks
+    (Stack = 'o' ; is_list(Stack)),
+    
+    % Ensure target position does not already contain a pawn
+    \+ (is_list(Stack), member(pawn(_, _), Stack)).
+
+
+% Helper predicates for stone manipulation
+remove_one_stone(Stack, NewStack) :-
+    delete(Stack, 'o', NewStack).
+
+add_stone_to_stack([], ['o']) :- !.
+add_stone_to_stack('o', ['o', 'o']) :- !.
+add_stone_to_stack(Stack, ['o'|Stack]) :-
+    is_list(Stack).
 
 % Select pawn for current player
 select_pawn(Player, [pawns(Player, PawnList) | _], Index, Pos) :-
@@ -208,67 +281,129 @@ select_pawn(Player, [pawns(Player, PawnList) | _], Index, Pos) :-
 select_pawn(Player, [_ | Rest], Index, Pos) :-
     select_pawn(Player, Rest, Index, Pos).
 
-% Validate moves
-valid_moves(Board, [CurrRow, CurrCol], [NewRow, NewCol]) :-
-    length(Board, Size),
-    NewRow > 0, NewRow =< Size,
-    NewCol > 0, NewCol =< Size,
-    % Allow movement to any adjacent cell (including diagonals)
-    between(-1, 1, RowDiff),
-    between(-1, 1, ColDiff),
-    NewRow is CurrRow + RowDiff,
-    NewCol is CurrCol + ColDiff,
-    % Get heights of current and target positions
-    get_stack_height(Board, CurrRow, CurrCol, CurrHeight),
-    get_stack_height(Board, NewRow, NewCol, NewHeight),
-    % Check height difference is valid (-1, 0, or 1)
-    HeightDiff is NewHeight - CurrHeight,
-    between(-1, 1, HeightDiff).
-
-% Update board with move
 update_board(Board, Row, Col, Value, NewBoard) :-
     nth1(Row, Board, OldRow, RestRows),
-    nth1(Col, OldRow, OldStack, RestCells),
-    update_stack(OldStack, Value, NewStack),
-    nth1(Col, NewRow, NewStack, RestCells),
+    nth1(Col, OldRow, _, RestCols),
+    nth1(Col, NewRow, Value, RestCols),
     nth1(Row, NewBoard, NewRow, RestRows).
-
-% Update stack handling
-update_stack(OldStack, [], []) :- !.  % Clear the stack
-update_stack(OldStack, [pawn(Player, Number)], [pawn(Player, Number)|Stones]) :- !,
-    % When adding a pawn, preserve stones below it
-    (is_list(OldStack) -> 
-        filter_stones(OldStack, Stones)
-    ; OldStack = 'o' -> 
-        Stones = ['o']
-    ; Stones = []).
-
-update_stack(_, ['o'], ['o']) :- !.  % Single stone
-update_stack(OldStack, ['o'], NewStack) :-  % Add stone to existing stack
-    (is_list(OldStack) ->
-        (member('o', OldStack) ->
-            append(['o'], OldStack, NewStack)
-        ;   ['o'|OldStack] = NewStack)
-    ; OldStack = 'o' ->
-        NewStack = ['o', 'o']
-    ; NewStack = ['o']).
-
-% Helper to filter stones
-filter_stones([], []).
-filter_stones(['o'|Rest], ['o'|Filtered]) :- 
-    filter_stones(Rest, Filtered).
-filter_stones([_|Rest], Filtered) :-  % Skip non-stone elements
-    filter_stones(Rest, Filtered).
 
 % Update pawns after move
 update_pawns([pawns(Player, PawnList) | Rest], Player, Index, NewPos, 
              [pawns(Player, NewPawnList) | Rest]) :-
     nth1(Index, PawnList, _, RestPawns),
     nth1(Index, NewPawnList, NewPos, RestPawns).
-
 update_pawns([Other | Rest], Player, Index, NewPos, [Other | NewRest]) :-
     update_pawns(Rest, Player, Index, NewPos, NewRest).
 
 % Switch players
 switch_player(CurrentPlayer, [CurrentPlayer, OtherPlayer], OtherPlayer).
 switch_player(CurrentPlayer, [OtherPlayer, CurrentPlayer], OtherPlayer).
+
+:- use_module(library(lists)).
+
+% The game is over if the current player has no valid moves left
+game_over(game_state(Board, CurrentPlayer, Players, Pawns, _PrevMove)) :-
+    % Find all pawns of the current player that have no valid moves
+    findall([PawnIndex, CurrRow, CurrCol],
+            (select_pawn(CurrentPlayer, Pawns, PawnIndex, [CurrRow, CurrCol]),
+             \+ has_valid_move(Board, [CurrRow, CurrCol])  % Check if the pawn has no valid moves
+            ),
+            NoMoves),
+    
+    % If there are no valid moves for at least one pawn, the game is over
+    NoMoves \= [].
+
+has_valid_move(Board, [CurrRow, CurrCol]) :-
+    % Generate all possible adjacent cells
+    findall([NewRow, NewCol],
+            (adjacent_cell(CurrRow, CurrCol, NewRow, NewCol),
+             valid_moves(Board, [CurrRow, CurrCol], [NewRow, NewCol])
+            ),
+            ValidMoves2),
+    
+    % Debugging output to see the possible valid moves
+    sort(ValidMoves2, ValidMoves),
+    write('Valid moves from ['), write(CurrRow), write(','), write(CurrCol), write(']: '), write(ValidMoves), nl,
+    
+    % If there are valid moves, return true
+    ValidMoves \= [].
+
+
+adjacent_cell(CurrRow, CurrCol, NewRow, NewCol) :-
+    % Generate all possible row and column changes: -1, 0, +1 for each direction
+    member(RowDiff, [-1, 0, 1]),      % Possible row changes
+    member(ColDiff, [-1, 0, 1]),      % Possible column changes
+
+    % Ensure we are not staying at the same cell
+    (RowDiff \= 0 ; ColDiff \= 0),    % We cant stay in the same position
+
+    % Calculate the new position based on the row and column changes
+    NewRow is CurrRow + RowDiff,
+    NewCol is CurrCol + ColDiff,
+
+    % Ensure NewRow and NewCol are within valid bounds (1 to 5)
+    NewRow > 0, NewRow =< 5,
+    NewCol > 0, NewCol =< 5.
+
+
+% Main value predicate
+value(game_state(Board, _, Players, Pawns, _), Player, Value) :-
+    % Calculate mobility score
+    mobility_score(Board, Pawns, Player, MobilityScore),
+    
+    % Calculate height advantage score
+    height_score(Board, Pawns, Player, HeightScore),
+    
+    % Calculate position score
+    position_score(Board, Pawns, Player, PositionScore),
+    
+    % Calculate final value (weighted sum of all factors)
+    Value is (MobilityScore * 0.5) + (HeightScore * 0.3) + (PositionScore * 0.2) + 50.
+
+% Mobility score - counts number of valid moves available
+mobility_score(Board, Pawns, Player, Score) :-
+    findall(1, 
+            (select_pawn(Player, Pawns, PawnIndex, [Row, Col]),
+             adjacent_cell(Row, Col, NewRow, NewCol),
+             valid_moves(Board, [Row, Col], [NewRow, NewCol])),
+            Moves),
+    length(Moves, NumMoves),
+    Score is NumMoves * 10.  % Multiply by 10 to give more weight to mobility
+
+% Height score - evaluates the height advantage of player's pawns
+height_score(Board, Pawns, Player, Score) :-
+    findall(Height,
+            (select_pawn(Player, Pawns, _, [Row, Col]),
+             get_stone_only_height(Board, Row, Col, Height)),
+            Heights),
+    sum_list(Heights, TotalHeight),
+    Score is TotalHeight * 10.  % Multiply by 15 to give significant weight to height advantage
+
+% Position score - evaluates strategic positioning
+position_score(Board, Pawns, Player, Score) :-
+    findall(PositionValue,
+            (select_pawn(Player, Pawns, _, [Row, Col]),
+             calculate_position_value(Row, Col, PositionValue)),
+            PositionValues),
+    sum_list(PositionValues, Score).
+
+% Helper predicate to calculate position value based on board position
+calculate_position_value(Row, Col, Value) :-
+    % Center positions are worth more
+    (Row = 3, Col = 3 -> 
+        Value = 30
+    ; (Row = 3; Col = 3) ->
+        Value = 20
+    ; % Corner positions are worth less
+    ((Row = 1; Row = 5), (Col = 1; Col = 5)) ->
+        Value = 10
+    ; % Other positions have moderate value
+        Value = 15
+    ).
+
+% Helper predicate to sum a list
+sum_list([], 0).
+sum_list([H|T], Sum) :-
+    sum_list(T, RestSum),
+    Sum is H + RestSum.
+

@@ -338,4 +338,3 @@ adjacent_cell(CurrRow, CurrCol, NewRow, NewCol) :-
 
 
 
-
