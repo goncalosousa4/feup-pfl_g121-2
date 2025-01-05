@@ -146,27 +146,6 @@ place_pawn(Board, Row, Col, Pawn, NewBoard) :-
     nth1(Row, NewBoard, NewRow, RestRows).
 
 % Player vs Player
-game_cycle_main(GameState, Mode) :-
-    display_game(GameState),
-    (game_over(GameState, Winner) ->
-        announce_winner(Winner)
-    ;   (Mode = pvp ->
-            make_move(GameState, NewGameState)
-        ; Mode = pve_easy, GameState = game_state(_, CurrentPlayer, _, _, _) ->
-            (CurrentPlayer = playerA -> 
-                make_move(GameState, NewGameState)
-            ;   easy_bot_move(GameState, NewGameState)
-            )
-        ; Mode = pve_difficult, GameState = game_state(_, CurrentPlayer, _, _, _) ->
-            (CurrentPlayer = playerA -> 
-                make_move(GameState, NewGameState)
-            ;   difficult_bot_move(GameState, NewGameState)
-            )
-        ; Mode = pve_pve ->
-            easy_bot_move(GameState, NewGameState)
-        ),
-        game_cycle_main(NewGameState, Mode)
-    ).
 
 % Main game cycle logic moved to separate predicate
 game_cycle_main(GameState, pvp) :-
@@ -515,9 +494,8 @@ game_over(game_state(Board, CurrentPlayer, Players, Pawns, _PrevMove), Winner) :
     
     % If there are no valid moves for at least one pawn, the game is over
     NoMoves \= [],
-    (   player1_wins(GameState) -> Winner = 'Player 1'
-    ;   player2_wins(GameState) -> Winner = 'Player 2'
-    ;   Winner = 'No winner'  % In case no one has won yet
+    (   CurrentPlayer = playerA -> Winner = playerB
+    ;   Winner = playerA
     ).
 
 player1_wins(GameState) :- % Add logic to determine if Player 1 has won
@@ -617,7 +595,7 @@ sum_list([H|T], Sum) :-
 
 % Easy bot: Random valid move
 easy_bot_move(GameState, NewGameState) :-
-    find_n_moves(100, GameState, Moves),
+    find_n_moves(1000, GameState, Moves),
     % Randomly select one of these moves
     random_member(BotMove, Moves),
     execute_move(GameState, BotMove, NewGameState).
@@ -625,7 +603,7 @@ easy_bot_move(GameState, NewGameState) :-
 % Difficult bot move using valid_bot_move
 difficult_bot_move(GameState, NewGameState) :-
     % Generate all valid bot moves (using valid_bot_move to collect valid moves)
-    find_n_moves(2000, GameState, ValidMoves),
+    find_n_moves(5000, GameState, ValidMoves),
 
     % Evaluate each valid move
     evaluate_moves(GameState, ValidMoves, EvaluatedMoves),
