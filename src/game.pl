@@ -370,7 +370,7 @@ mobility_score(Board, Pawns, Player, Score) :-
     length(Moves, NumMoves),
     Score is NumMoves * 10.  % Multiply by 10 to give more weight to mobility
 
-% Height score - evaluates the height advantage of player's pawns
+% Height score - evaluates the height advantage of players pawns
 height_score(Board, Pawns, Player, Score) :-
     findall(Height,
             (select_pawn(Player, Pawns, _, [Row, Col]),

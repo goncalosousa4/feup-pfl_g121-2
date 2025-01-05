@@ -193,6 +193,7 @@ move(game_state(Board, CurrentPlayer, Players, Pawns, _PrevMove),
     
     % Update pawns and switch player
     update_pawns(Pawns, CurrentPlayer, PawnIndex, [NewRow, NewCol], NewPawns),
+    write(Players), nl,
     switch_player(CurrentPlayer, Players, NextPlayer).
 
 valid_moves(Board, [CurrRow, CurrCol], [NewRow, NewCol]) :-
@@ -323,9 +324,9 @@ update_pawns([pawns(Player, PawnList) | Rest], Player, Index, NewPos,
 update_pawns([Other | Rest], Player, Index, NewPos, [Other | NewRest]) :-
     update_pawns(Rest, Player, Index, NewPos, NewRest).
 
-% Switch players
-switch_player(CurrentPlayer, [CurrentPlayer, OtherPlayer], OtherPlayer).
-switch_player(CurrentPlayer, [OtherPlayer, CurrentPlayer], OtherPlayer).
+% Switch to the next player
+switch_player(playerA, _, playerB).
+switch_player(playerB, _, playerA).
 
 % The game is over if the current player has no valid moves left
 game_over(game_state(Board, CurrentPlayer, Players, Pawns, _PrevMove)) :-
@@ -395,7 +396,7 @@ mobility_score(Board, Pawns, Player, Score) :-
     length(Moves, NumMoves),
     Score is NumMoves * 10.  % Multiply by 10 to give more weight to mobility
 
-% Height score - evaluates the height advantage of player's pawns
+% Height score - evaluates the height advantage of players pawns
 height_score(Board, Pawns, Player, Score) :-
     findall(Height,
             (select_pawn(Player, Pawns, _, [Row, Col]),
@@ -434,18 +435,35 @@ sum_list([H|T], Sum) :-
 
 % Easy bot: Random valid move
 easy_bot_move(GameState, NewGameState) :-
-    findall(Move, valid_bot_move(GameState, Move), Moves),
+    % Collect at most 10 valid moves
+    find_n_moves(10, GameState, Moves),
+    write('Moves Found: '), write(Moves), nl,
+    % Randomly select one of these moves
     random_member(BotMove, Moves),
     execute_move(GameState, BotMove, NewGameState).
+
+% Find at most N valid moves for a bot
+find_n_moves(N, GameState, Moves) :-
+    findall(Move, valid_bot_move(GameState, Move), AllMoves),
+    length(Moves, N),
+    append(Moves, _, AllMoves).  % Truncate the list to the first N moves
 
 % Find valid moves for a bot
 valid_bot_move(game_state(Board, CurrentPlayer, Players, Pawns, _), 
                (PawnIndex, NewRow, NewCol, PickupRow, PickupCol, PlaceRow, PlaceCol)) :-
     select_pawn(CurrentPlayer, Pawns, PawnIndex, [CurrRow, CurrCol]),
+    %write('Pawn: '), write(PawnIndex), write(' at '), write([CurrRow, CurrCol]), nl,
     adjacent_cell(CurrRow, CurrCol, NewRow, NewCol),
+    %write('Move to: '), write([NewRow, NewCol]), nl,
     valid_moves(Board, [CurrRow, CurrCol], [NewRow, NewCol]),
+    %write('Valid move.'), nl,
     valid_stone_pickup(Board, PickupRow, PickupCol, [NewRow, NewCol]),
+    %write('Pickup: '), write([PickupRow, PickupCol]), nl,
+    length(Board, BoardSize),
+    between(1, BoardSize, PlaceRow),  % Generate rows within board range
+    between(1, BoardSize, PlaceCol), % Generate cols within board range
     valid_stone_placement(Board, PlaceRow, PlaceCol, [NewRow, NewCol], [PickupRow, PickupCol]).
+    %write('Placement: '), write([PlaceRow, PlaceCol]), nl.
 
 % Execute a move for the bot
 execute_move(GameState, (PawnIndex, NewRow, NewCol, PickupRow, PickupCol, PlaceRow, PlaceCol), NewGameState) :-
