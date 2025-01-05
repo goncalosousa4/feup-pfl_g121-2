@@ -601,19 +601,13 @@ position_score(Board, Pawns, Player, Score) :-
             PositionValues),
     sum_list(PositionValues, Score).
 
-% Helper predicate to calculate position value based on board position
-calculate_position_value(Row, Col, Value) :-
-    % Center positions are worth more
-    (Row = 3, Col = 3 -> 
-        Value = 30
-    ; (Row = 3; Col = 3) ->
-        Value = 20
-    ; % Corner positions are worth less
-    ((Row = 1; Row = 5), (Col = 1; Col = 5)) ->
-        Value = 10
-    ; % Other positions have moderate value
-        Value = 15
-    ).
+calculate_position_value(3, 3, 30).
+calculate_position_value(2, 2, 30).
+calculate_position_value(1, 1, 10).
+calculate_position_value(1, 5, 10).
+calculate_position_value(5, 1, 10).
+calculate_position_value(5, 5, 10).
+calculate_position_value(_, _, 15).
 
 % Helper predicate to sum a list
 sum_list([], 0).
@@ -665,10 +659,6 @@ execute_move(GameState, Move, NewGameState) :-
     % This should be the logic that applies the move to the current game state
     % It can use the existing game mechanics like move or any equivalent.
     move(GameState, Move, NewGameState).
-
-
-find_n_moves(N, GameState, Moves) :-
-    find_n_moves_helper(N, GameState, [], Moves).
 
 % Attempt to find a single valid move by trying up to N times
 find_n_moves(0, _, []) :- !. % Stop if no attempts are left
