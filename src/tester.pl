@@ -77,10 +77,12 @@ select_game_mode(Mode) :-
     write('1 - Player vs Player'), nl,
     write('2 - Player vs Easy Bot'), nl,
     write('3 - Player vs Difficult Bot'), nl,
+    write('4 - Bot vs Bot'), nl,
     read(Choice),
     (   Choice = 1 -> Mode = pvp
     ;   Choice = 2 -> Mode = pve_easy
     ;   Choice = 3 -> Mode = pve_difficult
+    ;   Choice = 4 -> Mode = pve_pve
     ;   write('Invalid choice, try again.'), nl, select_game_mode(Mode)
     ).
 
@@ -120,8 +122,8 @@ place_pawn(Board, Row, Col, Pawn, NewBoard) :-
 % Player vs Player
 game_cycle(GameState, pvp) :-
     display_game(GameState),
-    (   game_over(GameState) ->
-            nl, write('Game Over!'), nl
+    (   game_over(GameState, Winner) ->
+            nl, write('Game Over!'), write('Winner: '), write(Winner), nl
     ;   make_move(GameState, NewGameState),
         game_cycle(NewGameState, pvp)
     ).
@@ -129,8 +131,8 @@ game_cycle(GameState, pvp) :-
 % Player vs Easy Bot
 game_cycle(GameState, pve_easy) :-
     display_game(GameState),
-    (   game_over(GameState) ->
-            nl, write('Game Over!'), nl
+    (   game_over(GameState, Winner) ->
+            nl, write('Game Over!'), write('Winner: '), write(Winner), nl
     ;   GameState = game_state(_, CurrentPlayer, _, _, _),
         (   CurrentPlayer = playerA -> 
                 make_move(GameState, NewGameState)
@@ -139,17 +141,30 @@ game_cycle(GameState, pve_easy) :-
         game_cycle(NewGameState, pve_easy)  % Continue to the next cycle
     ).
 
-    % Player vs Difficult Bot
+% Player vs Difficult Bot
 game_cycle(GameState, pve_difficult) :-
     display_game(GameState),
-    (   game_over(GameState) ->
-            nl, write('Game Over!'), nl
+    (   game_over(GameState, Winner) ->
+            nl, write('Game Over!'), write('Winner: '), write(Winner), nl
     ;   GameState = game_state(_, CurrentPlayer, _, _, _),
         (   CurrentPlayer = playerA -> 
                 make_move(GameState, NewGameState)
         ;   difficult_bot_move(GameState, NewGameState)
         ),
         game_cycle(NewGameState, pve_difficult)  % Continue to the next cycle
+    ).
+
+% Bot vs Bot
+game_cycle(GameState, pve_pve) :-
+    display_game(GameState),
+    (   game_over(GameState, Winner) ->
+            nl, write('Game Over!'), write('Winner: '), write(Winner), nl
+    ;   GameState = game_state(_, CurrentPlayer, _, _, _),
+        (   CurrentPlayer = playerA -> 
+                easy_bot_move(GameState, NewGameState)
+        ;   easy_bot_move(GameState, NewGameState)
+        ),
+        game_cycle(NewGameState, pve_pve)  % Continue to the next cycle
     ).
 
 % Make a move
@@ -343,7 +358,7 @@ switch_player(playerA, _, playerB).
 switch_player(playerB, _, playerA).
 
 % The game is over if the current player has no valid moves left
-game_over(game_state(Board, CurrentPlayer, Players, Pawns, _PrevMove)) :-
+game_over(game_state(Board, CurrentPlayer, Players, Pawns, _PrevMove), Winner) :-
     % Find all pawns of the current player that have no valid moves
     findall([PawnIndex, CurrRow, CurrCol],
             (select_pawn(CurrentPlayer, Pawns, PawnIndex, [CurrRow, CurrCol]),
@@ -352,7 +367,19 @@ game_over(game_state(Board, CurrentPlayer, Players, Pawns, _PrevMove)) :-
             NoMoves),
     
     % If there are no valid moves for at least one pawn, the game is over
-    NoMoves \= [].
+    NoMoves \= [],
+    (   player1_wins(GameState) -> Winner = 'Player 1'
+    ;   player2_wins(GameState) -> Winner = 'Player 2'
+    ;   Winner = 'No winner'  % In case no one has won yet
+    ).
+
+player1_wins(GameState) :- % Add logic to determine if Player 1 has won
+    % Example condition for Player 1 winning
+    GameState = state([player1, _, _, _, _, _, _, _, _]).
+
+player2_wins(GameState) :- % Add logic to determine if Player 2 has won
+    % Example condition for Player 2 winning
+    GameState = state([_, _, _, _, player2, _, _, _, _]).
 
 has_valid_move(Board, [CurrRow, CurrCol]) :-
     % Generate all possible adjacent cells
@@ -449,8 +476,7 @@ sum_list([H|T], Sum) :-
 
 % Easy bot: Random valid move
 easy_bot_move(GameState, NewGameState) :-
-    % Collect at most 10 valid moves
-    find_n_moves(1000, GameState, Moves),
+    find_n_moves(10000, GameState, Moves),
     % Randomly select one of these moves
     random_member(BotMove, Moves),
     execute_move(GameState, BotMove, NewGameState).
