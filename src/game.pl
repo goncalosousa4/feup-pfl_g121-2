@@ -23,22 +23,22 @@ display_values(GameState, [Player|Rest]) :-
 
 % Display cell based on content
 display_cell([]) :- write('[ ]').
-display_cell('o') :- write(' o ').
+display_cell('o') :- write(' 1o ').
 display_cell([pawn(Player, Number) | Rest]) :- 
     sub_atom(Player, 6, 1, _, PlayerLetter),
     write(PlayerLetter), write(Number),
-    (member('o', Rest) -> write('o') ; true).
+    display_cell(Rest).
 display_cell(Stack) :-
     is_list(Stack),
     count_stones(Stack, N),
-    N > 0,
-    write_stones(N).  % Write repeated 'o' for stones
+    write(N), write('o').
+
 
 % Helper to write 'o' N times
 write_stones(0).  % No stones to write
 write_stones(N) :- 
     N > 0, 
-    write(' o '), 
+    write('o'), 
     N1 is N - 1, 
     write_stones(N1).
 
@@ -617,7 +617,7 @@ sum_list([H|T], Sum) :-
 
 % Easy bot: Random valid move
 easy_bot_move(GameState, NewGameState) :-
-    find_n_moves(1000, GameState, Moves),
+    find_n_moves(100, GameState, Moves),
     % Randomly select one of these moves
     random_member(BotMove, Moves),
     execute_move(GameState, BotMove, NewGameState).
@@ -664,13 +664,16 @@ execute_move(GameState, Move, NewGameState) :-
 find_n_moves(N, GameState, Moves) :-
     find_n_moves_helper(N, GameState, [], Moves).
 
-find_n_moves_helper(0, _, Moves, Moves).  % If N is 0, return the collected moves
-find_n_moves_helper(N, GameState, Acc, Moves) :-
+% Attempt to find a single valid move by trying up to N times
+find_n_moves(0, _, []) :- !. % Stop if no attempts are left
+find_n_moves(N, GameState, [Move]) :-
     N > 0,
-    valid_bot_move(GameState, Move),  % Find a valid move
-    random_member(Move, [Move]),  % Choose randomly (here its trivial, but you can modify this for more complex random selection)
-    N1 is N - 1,
-    find_n_moves_helper(N1, GameState, [Move | Acc], Moves).  % Accumulate the moves and reduce N
+    (   valid_bot_move(GameState, Move) % Check if a valid move is found
+    ->  true  % If a move is found, return it
+    ;   N1 is N - 1,  % Otherwise, decrement the attempts
+        find_n_moves(N1, GameState, [Move])  % Try again
+    ).
+
 
 % Find valid moves for a bot
 valid_bot_move(game_state(Board, CurrentPlayer, Players, Pawns, _), 
