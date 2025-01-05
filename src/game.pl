@@ -400,17 +400,22 @@ valid_moves(Board, [CurrRow, CurrCol], [NewRow, NewCol]) :-
     length(Board, Size),
     
     % Check bounds
-    (NewRow > 0, NewRow =< Size, NewCol > 0, NewCol =< Size),
+    NewRow > 0, 
+    Size >= NewRow, 
+    NewCol > 0, 
+    Size >= NewCol,
     
     RowDiff is NewRow - CurrRow,
     ColDiff is NewCol - CurrCol,
     
     % Ensure we are moving, not staying in the same position
-    \+ (RowDiff = 0, ColDiff = 0),
+    \+ ((RowDiff is 0, ColDiff is 0)),
     
     % Allow diagonal or adjacent moves
-    abs(RowDiff) =< 1,
-    abs(ColDiff) =< 1,
+    AbsRowDiff is abs(RowDiff),
+    AbsColDiff is abs(ColDiff),
+    1 >= AbsRowDiff,
+    1 >= AbsColDiff,
     
     % Check stone height difference
     get_stone_only_height(Board, CurrRow, CurrCol, CurrHeight),
@@ -422,8 +427,10 @@ valid_moves(Board, [CurrRow, CurrCol], [NewRow, NewCol]) :-
     
     % Ensure the target position has something (either a pawn or a stone)
     get_stack(Board, NewRow, NewCol, Stack),
-    Stack \= [ ], % Disallow moving to an empty space
-    (Stack = 'o' ; is_list(Stack)), % Target must have stones or a stack
+    Stack \= [], % Disallow moving to an empty space
+    
+    % Target must have stones or be a stack
+    (Stack = 'o' ; is_list(Stack)),
     
     % Ensure the target position does not have another pawn
     \+ (is_list(Stack), member(pawn(_, _), Stack)).
