@@ -3,18 +3,16 @@
 :- use_module(library(random)).
 
 % Display the game state
-display_game(GameState) :-
-    write('\n===========================================\n'),
-    write('               NEW TURN                    \n'),
-    write('===========================================\n\n'),
-    GameState = game_state(Board, CurrentPlayer, Players, Pawns, PrevMove),
+display_game(game_state(Board, CurrentPlayer, Players, Pawns, PrevMove)) :-
+    write('\n-------------------------------------------\n'),
+    write('                  NEW TURN                    \n'),
+    write('-------------------------------------------\n\n'),
     write('Current Player: '), write(CurrentPlayer), nl,
     display_board(Board),
     nl, write('Pawns: '), write(Pawns), nl,
     write('Previous Move: '), write(PrevMove), nl,
-    display_values(GameState, Players),
-    % Add resign option information
-    write('\nType "resign" at any prompt to forfeit the game\n\n').
+    display_values(game_state(Board, CurrentPlayer, Players, Pawns, PrevMove), Players),
+    write('\nType "surrender" at any prompt to forfeit the game\n\n').
 
 % Helper predicate to display values for all players
 display_values(GameState, []).
@@ -25,11 +23,11 @@ display_values(GameState, [Player|Rest]) :-
 
 % Display cell based on content
 display_cell([]) :- write('[ ]').
-display_cell('o') :- write('o').
+display_cell('o') :- write(' o ').
 display_cell([pawn(Player, Number) | Rest]) :- 
     sub_atom(Player, 6, 1, _, PlayerLetter),
     write(PlayerLetter), write(Number),
-    (Rest = ['o'] -> write('o') ; true).
+    (member('o', Rest) -> write('o') ; true).
 display_cell(Stack) :-
     is_list(Stack),
     count_stones(Stack, N),
@@ -40,7 +38,7 @@ display_cell(Stack) :-
 write_stones(0).  % No stones to write
 write_stones(N) :- 
     N > 0, 
-    write('o'), 
+    write(' o '), 
     N1 is N - 1, 
     write_stones(N1).
 
@@ -53,7 +51,7 @@ count_stones([pawn(_,_)|Rest], N) :-
     count_stones(Rest, N).
 
 display_board(Board) :-
-    write('Board:'), nl,
+    write('Board:\n'), nl,
     display_rows(Board, 1).
 
 display_rows([], _).
@@ -67,7 +65,7 @@ display_rows([Row|Rest], RowNum) :-
 display_row([]).
 display_row([Cell|Rest]) :-
     display_cell(Cell),
-    write('    '),
+    write(' | '),
     display_row(Rest).
 
 % Game initialization
@@ -80,12 +78,16 @@ play_game_loop :-
     initialize_game(Mode, GameState),
     catch(
         game_cycle_main(GameState, Mode),
-        game_resigned(_),
+        game_surrender(_),
         true
     ),
     write('\nWould you like to play again? (y/n): '),
     read(Answer),
-    (Answer = y -> play_game_loop ; true).
+    continue_game(Answer).
+
+% Pattern matching for the continue game decision
+continue_game(y) :- play_game_loop.
+continue_game(_).
 
 select_game_mode(Mode) :-
     nl, write('Select Game Mode:'), nl,
@@ -94,12 +96,15 @@ select_game_mode(Mode) :-
     write('3 - Player vs Difficult Bot'), nl,
     write('4 - Bot vs Bot'), nl,
     read(Choice),
-    (   Choice = 1 -> Mode = pvp
-    ;   Choice = 2 -> Mode = pve_easy
-    ;   Choice = 3 -> Mode = pve_difficult
-    ;   Choice = 4 -> Mode = pve_pve
-    ;   write('Invalid choice, try again.'), nl, select_game_mode(Mode)
-    ).
+    select_mode(Choice, Mode).
+
+select_mode(1, pvp).
+select_mode(2, pve_easy).
+select_mode(3, pve_difficult).
+select_mode(4, pve_pve).
+select_mode(_, Mode) :-
+    write('Invalid choice, try again.'), nl,
+    select_game_mode(Mode).
 
 initialize_game(_, GameState) :-
     initial_state([playerA, playerB, 5], GameState).
@@ -204,20 +209,20 @@ game_cycle_main(GameState, pve_pve) :-
     ).
 % Make a move
 make_move(game_state(Board, CurrentPlayer, Players, Pawns, PrevMove), NewGameState) :-
-    get_valid_pawn_index_or_resign(PawnIndex, CurrentPlayer, Pawns, Players),
-    get_valid_move_or_resign(Board, CurrentPlayer, Pawns, PawnIndex, NewRow, NewCol),
-    get_valid_stone_actions_or_resign(Board, NewRow, NewCol, PickupRow, PickupCol, PlaceRow, PlaceCol),
+    get_valid_pawn_index_or_surrender(PawnIndex, CurrentPlayer, Pawns, Players),
+    get_valid_move_or_surrender(Board, CurrentPlayer, Pawns, PawnIndex, NewRow, NewCol),
+    get_valid_stone_actions_or_surrender(Board, NewRow, NewCol, PickupRow, PickupCol, PlaceRow, PlaceCol),
     move(game_state(Board, CurrentPlayer, Players, Pawns, PrevMove),
          (PawnIndex, NewRow, NewCol, PickupRow, PickupCol, PlaceRow, PlaceCol),
          NewGameState).
 
 % Get valid pawn index with retry
-get_valid_pawn_index_or_resign(PawnIndex, CurrentPlayer, Pawns, Players) :-
+get_valid_pawn_index_or_surrender(PawnIndex, CurrentPlayer, Pawns, Players) :-
     repeat,
     write('Choose your pawn index (1 or 2): '),
     read(Input),
-    (Input = resign ->
-        handle_resign(CurrentPlayer, Players),
+    (Input = surrender ->
+        handle_surrender(CurrentPlayer, Players),
         !, fail
     ;   (validate_pawn_index(Input, CurrentPlayer, Pawns) ->
             PawnIndex = Input,
@@ -228,12 +233,12 @@ get_valid_pawn_index_or_resign(PawnIndex, CurrentPlayer, Pawns, Players) :-
     ).
 
 % Get valid move coordinates with retry for the same pawn
-get_valid_move_or_resign(Board, CurrentPlayer, Pawns, PawnIndex, NewRow, NewCol) :-
+get_valid_move_or_surrender(Board, CurrentPlayer, Pawns, PawnIndex, NewRow, NewCol) :-
     repeat,
     write('Enter your move (NewRow, NewCol): '),
     read(Input),
-    (Input = resign ->
-        handle_resign(CurrentPlayer, Players),
+    (Input = surrender ->
+        handle_surrender(CurrentPlayer, Players),
         !, fail
     ;   Input = (NewRow, NewCol),
         (validate_pawn_move(Board, CurrentPlayer, Pawns, PawnIndex, NewRow, NewCol) ->
@@ -247,16 +252,16 @@ get_valid_move_or_resign(Board, CurrentPlayer, Pawns, PawnIndex, NewRow, NewCol)
     ).
 
 % Get valid stone pickup and placement positions
-get_valid_stone_actions_or_resign(Board, NewRow, NewCol, PickupRow, PickupCol, PlaceRow, PlaceCol) :-
+get_valid_stone_actions_or_surrender(Board, NewRow, NewCol, PickupRow, PickupCol, PlaceRow, PlaceCol) :-
     repeat,
     write('Enter stone pickup position (Row, Col): '),
     read(Input),
-    (Input = resign ->
-        handle_resign(CurrentPlayer, Players),
+    (Input = surrender ->
+        handle_surrender(CurrentPlayer, Players),
         !, fail
     ;   Input = (PickupRow, PickupCol),
         (validate_stone_pickup(Board, PickupRow, PickupCol, NewRow, NewCol) ->
-            get_valid_stone_placement_or_resign(Board, NewRow, NewCol, PickupRow, PickupCol, PlaceRow, PlaceCol),
+            get_valid_stone_placement_or_surrender(Board, NewRow, NewCol, PickupRow, PickupCol, PlaceRow, PlaceCol),
             !
         ;   write('Invalid stone pickup position! The position must:\n'),
             write('- Contain a stone\n'),
@@ -267,12 +272,12 @@ get_valid_stone_actions_or_resign(Board, NewRow, NewCol, PickupRow, PickupCol, P
     ).
 
 % Get valid stone placement position
-get_valid_stone_placement_or_resign(Board, NewRow, NewCol, PickupRow, PickupCol, PlaceRow, PlaceCol) :-
+get_valid_stone_placement_or_surrender(Board, NewRow, NewCol, PickupRow, PickupCol, PlaceRow, PlaceCol) :-
     repeat,
     write('Enter stone placement position (Row, Col): '),
     read(Input),
-    (Input = resign ->
-        handle_resign(CurrentPlayer, Players),
+    (Input = surrender ->
+        handle_surrender(CurrentPlayer, Players),
         !, fail
     ;   Input = (PlaceRow, PlaceCol),
         (validate_stone_placement(Board, PlaceRow, PlaceCol, NewRow, NewCol, PickupRow, PickupCol) ->
@@ -285,21 +290,26 @@ get_valid_stone_placement_or_resign(Board, NewRow, NewCol, PickupRow, PickupCol,
         )
     ).
 
-handle_resign(CurrentPlayer, Players) :-
+handle_surrender(CurrentPlayer, Players) :-
     % Find the other player (winner)
     (CurrentPlayer = playerA -> Winner = playerB ; Winner = playerA),
-    write('\n===========================================\n'),
-    write('            GAME OVER                      \n'),
-    write(CurrentPlayer), write(' has resigned!\n'),
+    write('\n-------------------------------------------\n'),
+    write('-------------------------------------------\n'),
+    write('\n                GAME OVER                      \n\n'),
+    write(CurrentPlayer), write(' surrendered!\n\n\n\n'),
     write(Winner), write(' wins the game!\n'),
-    write('===========================================\n\n'),
-    throw(game_resigned(Winner)).
+    write('-------------------------------------------\n'),
+    write('-------------------------------------------\n\n'),
+    throw(game_surrender(Winner)).
 
 announce_winner(Winner) :-
-    write('\n===========================================\n'),
-    write('            GAME OVER                      \n'),
+    write('\n-------------------------------------------\n'),
+    write('-------------------------------------------\n'),
+    write('\n                GAME OVER                      \n\n'),
     write('Winner: '), write(Winner), nl,
-    write('===========================================\n\n').
+    write('\n-------------------------------------------\n'),
+    write('-------------------------------------------\n\n').
+            
 
 % Validation predicates remain the same
 validate_pawn_index(PawnIndex, CurrentPlayer, Pawns) :-
